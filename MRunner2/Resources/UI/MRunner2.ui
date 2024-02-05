@@ -96,6 +96,41 @@
         </property>
        </widget>
       </item>
+      <item row="1" column="0">
+       <widget class="QProgressBar" name="prgTestHost">
+        <property name="value">
+         <number>24</number>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>Connection Status</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLabel" name="lblHostConnectionStatus">
+        <property name="text">
+         <string>N/A</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_6">
+        <property name="text">
+         <string>Docker Version</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLabel" name="lblHostDockerVersion">
+        <property name="text">
+         <string>N/A</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -134,7 +169,7 @@
    <item>
     <widget class="QPushButton" name="applyButton">
      <property name="enabled">
-      <bool>false</bool>
+      <bool>true</bool>
      </property>
      <property name="toolTip">
       <string>Run the algorithm.</string>

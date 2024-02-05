@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Annotated, Optional, List
 
-import vtk
+import vtk, qt
 
 import slicer
 from slicer.i18n import tr as _
@@ -15,7 +15,7 @@ from slicer.parameterNodeWrapper import (
 )
 
 from slicer import vtkMRMLScalarVolumeNode
-
+import DICOMSegmentationPlugin
 
 #
 # MRunner2
@@ -168,6 +168,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
 
         # Buttons
+        self.ui.cmdTestHost.connect('clicked(bool)', self.onTestHostButton)
         self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
 
         # Dorpdowns (hosts)
@@ -247,29 +248,158 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._checkCanApply()
 
     def _checkCanApply(self, caller=None, event=None) -> None:
-        if self._parameterNode and self._parameterNode.inputVolume and self._parameterNode.thresholdedVolume:
+        if self._parameterNode and self._parameterNode.inputVolume:
             self.ui.applyButton.toolTip = _("Compute output volume")
             self.ui.applyButton.enabled = True
         else:
-            self.ui.applyButton.toolTip = _("Select input and output volume nodes")
+            self.ui.applyButton.toolTip = _("Select input volume node")
             self.ui.applyButton.enabled = False
+
+    def onTestHostButton(self) -> None:
+        """
+        Run processing when user clicks "Test Host" button.
+        """
+        
+        # progressbar upgrade gradually for 10 seconds and stop when testSshHost returns either true or false
+        self.ui.prgTestHost.setRange(0, 100)
+        self.ui.prgTestHost.setValue(0)
+        self.ui.prgTestHost.setFormat("Testing host: %p%")
+        self.ui.prgTestHost.show()
+        
+        # try outsourced thread
+        self.sshHelper = SSHHHelper(progressBar=self.ui.prgTestHost)
+        self.sshHelper.run(hostid=self.ui.hostSelector.currentText)
+    
+        
+        # with slicer.util.tryWithErrorDisplay(_("Failed to test host."), waitCursor=True):
+        #     self.logic.testSshHost(self.ui.hostSelector.currentText)
+
+    def onTestHostResult(self, isHostAvailable: bool) -> None:
+        """
+        Run processing when user clicks "Test Host" button.
+        """
+        self.ui.prgTestHost.hide()
+        if isHostAvailable:
+            slicer.util.confirmOkCancel("Host is available", "Host is available")
+        else:
+            slicer.util.confirmOkCancel("Host is not available", "Host is not available")
 
     def onApplyButton(self) -> None:
         """
         Run processing when user clicks "Apply" button.
         """
+        
         with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
+            
+            # get node path from selected node
+            input_image_node = self.ui.inputSelector.currentNode()
+            input_image_paths = self.logic.get_node_paths(input_image_node)
+            print(f"input_image_path: {input_image_paths}")
+            
+            # create temp dir
+            
+            # copy / upoad input image to temp dir
+            
+            # run processing on host
+        
+        # with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
 
-            # Compute output
-            self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
-                               self.ui.imageThresholdSliderWidget.value, self.ui.invertOutputCheckBox.checked)
+        #     # Compute output
+        #     self.logic.process(self.ui.inputSelector.currentNode(), self.ui.outputSelector.currentNode(),
+        #                        self.ui.imageThresholdSliderWidget.value, self.ui.invertOutputCheckBox.checked)
 
-            # Compute inverted output (if needed)
-            if self.ui.invertedOutputSelector.currentNode():
-                # If additional output volume is selected then result with inverted threshold is written there
-                self.logic.process(self.ui.inputSelector.currentNode(), self.ui.invertedOutputSelector.currentNode(),
-                                   self.ui.imageThresholdSliderWidget.value, not self.ui.invertOutputCheckBox.checked, showResult=False)
+        #     # Compute inverted output (if needed)
+        #     if self.ui.invertedOutputSelector.currentNode():
+        #         # If additional output volume is selected then result with inverted threshold is written there
+        #         self.logic.process(self.ui.inputSelector.currentNode(), self.ui.invertedOutputSelector.currentNode(),
+        #                            self.ui.imageThresholdSliderWidget.value, not self.ui.invertOutputCheckBox.checked, showResult=False)
 
+#
+# Asynchronous class for ssh operations
+#
+
+class SSHHHelper:
+    
+    # run various asynchroneous tests and retrieve information from host
+    # - test: host availability (except localhost)
+    # - test: docker availability
+    # - get:  docker version
+    # - test: docker version (optional)
+    # - get:  available mhub images (all starting with mhubai/... except base)
+    
+    timer: qt.QTimer
+    progress: int = 0
+    
+    def __init__(self, progressBar):
+        self.progressBar = progressBar
+        
+        # create qt timer
+        self.timer = qt.QTimer()
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.onTimeout)
+        
+    def onTimeout(self):
+        # update progress
+        self.progress += 10
+        if self.progress >= 100:
+            self.timer.stop()
+        
+        # cheak if thread stopped
+        if not self.thread.is_alive():
+            self.timer.stop()
+            #self.progressBar.hide()
+        
+        # update ui
+        self.progressBar.setValue(self.progress)
+    
+    def run(self, hostid: str):
+        import threading
+
+        # start timer
+        self.timer.start()
+
+        # create thread
+        self.thread = threading.Thread(target=self.work, args=(hostid,))
+        self.thread.start()
+        
+
+    def work(self, hostid: str):
+        from sshconf import read_ssh_config
+        from os.path import expanduser
+        import paramiko
+        
+        # print
+        print(f"Testing host: {hostid}", flush=True)
+        
+        # get host details
+        c = read_ssh_config(expanduser("~/.ssh/config"))
+
+        # assuming you have a host "svu"
+        host = c.host(hostid)
+        print("host details", host, flush=True)  # print the settings
+        
+        
+        # instantiate ssh client
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        
+        # try  to connect to host with ssh, outsource in non-blocking sub-thread:
+        try:
+            ssh.connect(
+                hostname=host['hostname'],
+                username=host['user'] if 'user' in host else None,
+                port=host['port'] if 'port' in host else 22,
+                key_filename=expanduser(host['identityfile']) if 'identityfile' in host else None,
+                timeout=10
+            )
+            
+            # check docker version and print results
+            stdin, stdout, stderr = ssh.exec_command('docker --version')
+            print(stdout.read().decode('utf-8'), flush=True)
+            
+            ssh.close()
+        except Exception as e:
+            print(f"Failed to connect to host: {hostid}: {e}", flush=True)
 
 #
 # MRunner2Logic
@@ -312,7 +442,6 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             #self.log('paramiko is required. Installing...')
             slicer.util.pip_install('paramiko')
         
-
     def getAvailableSshHosts(self) -> List[str]:
         from sshconf import read_ssh_config
         from os.path import expanduser
@@ -320,18 +449,16 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         c = read_ssh_config(expanduser("~/.ssh/config"))
         self.hosts = list(c.hosts())
         
-    def testSshHost(self, host: str) -> bool:
-        import paramiko
-        
-        # try  to connect to host with ssh
-        try:
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(host)
-            ssh.close()
-        except Exception as e:
-            return False
-        return True
+    def get_node_paths(self, node) -> List[str]:
+        storageNode=node.GetStorageNode()
+        if storageNode is not None:
+            return [storageNode.GetFullNameFromFileName()]
+        else:
+            instanceUIDs=node.GetAttribute('DICOM.instanceUIDs').split()
+            return [slicer.dicomDatabase.fileForInstance(instanceUID) for instanceUID in instanceUIDs]
+
+
+
 
     def process(self,
                 inputVolume: vtkMRMLScalarVolumeNode,
@@ -370,6 +497,122 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         stopTime = time.time()
         logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
 
+    def saveSegmentations(self, timestamp, database_type):
+        
+        # labelNodes = slicer.util.getNodes('*-label*')
+        labelNodes = slicer.util.getNodesByClass('vtkMRMLSegmentationNode') 
+        # slicer.mrmlScene.getNodesByClass("vtkMRMLSegmentationNode").UnRegister(None)
+        nodes = slicer.mrmlScene.GetNodesByClass('vtkMRMLSegmentationNode')
+        nodes.UnRegister(slicer.mrmlScene)
+        
+        logging.debug('All label nodes found: ' + str(labelNodes))
+        savedMessage = 'Segmentations for the following series were saved:\n\n'
+        
+        import DICOMSegmentationPlugin
+        exporter = DICOMSegmentationPlugin.DICOMSegmentationPluginClass()
+        
+        success = 0 
+        
+        db = slicer.dicomDatabase
+        
+        # for label in labelNodes.values():
+        for label in labelNodes: 
+        
+            # labelName_ref = label.GetName()[:label.GetName().rfind("-")]
+            # print('labelName_ref: ' + str(labelName_ref))
+            # labelSeries = labelName_ref.split(' : ')[-1] # will be just the referenced SeriesInstanceUID 
+            
+            # Instead get the labelSeries = referencedSeriesInstanceUID, from the actual segmentation object DICOM metadata 
+            # and not the name of the label 
+            # volumeNode = label.GetNodeReference('referenceImageGeometryRef')
+            labelSeries = self.refSeriesNumber 
+            
+            # For the SeriesDescription of the SEG object
+            # labelName = "Segmentation for " + str(labelSeries)
+            labelName = "Segmentation"
+        
+            # Create directory for where to save the output segmentations 
+            segmentationsDir = os.path.join(db.databaseDirectory, self.selectedStudyName, labelSeries) 
+            self.logic.createDirectory(segmentationsDir) 
+
+            ### Get the referenced volume node without matching by name ### 
+            referenceVolumeNode = label.GetNodeReference('referenceImageGeometryRef')
+            
+            shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+            
+            # set these for now. 
+            # study list could be from different patients. 
+            patientItemID = shNode.CreateSubjectItem(shNode.GetSceneItemID(), self.selectedStudyName)
+            studyItemID = shNode.CreateStudyItem(patientItemID, self.selectedStudyName)
+            volumeShItemID = shNode.GetItemByDataNode(referenceVolumeNode) # set volume node 
+            shNode.SetItemParent(volumeShItemID, studyItemID)
+            segmentationShItem = shNode.GetItemByDataNode(label) # segmentation
+            shNode.SetItemParent(segmentationShItem, studyItemID)
+            
+            
+            if (database_type=="local"):
+            
+                # Export to DICOM
+                exportables = exporter.examineForExport(segmentationShItem)
+                for exp in exportables:
+                    exp.directory = segmentationsDir
+                    exp.setTag('SeriesDescription', labelName)
+                    # exp.setTag('ContentCreatorName', username)
+                # exporter.export(exportables)
+                
+                # uniqueID = username + '-' + "SEG" + '-' + timestamp 
+                # labelFileName = os.path.join(segmentationsDir, uniqueID + ".dcm")
+                
+                labelFileName = os.path.join(segmentationsDir, 'subject_hierarchy_export.SEG'+exporter.currentDateTime+".dcm")
+                print ('labelFileName: ' + str(labelFileName))
+            
+                # exporter.export(exportables, labelFileName)
+                exporter.export(exportables)
+            
+            elif (database_type=="remote"):
+            
+                # Create temporary directory for saving the DICOM SEG file  
+                downloadDirectory = os.path.join(slicer.dicomDatabase.databaseDirectory,'tmp')
+                if not os.path.isdir(downloadDirectory):
+                    os.mkdir(downloadDirectory)
+                    
+                # Export to DICOM
+                exportables = exporter.examineForExport(segmentationShItem)
+                for exp in exportables:
+                    exp.directory = downloadDirectory
+                    exp.setTag('SeriesDescription', labelName)
+                    # exp.setTag('ContentCreatorName', username)
+                
+                labelFileName = os.path.join(downloadDirectory, 'subject_hierarchy_export.SEG'+exporter.currentDateTime+".dcm")
+                print ('labelFileName: ' + str(labelFileName))
+            
+                exporter.export(exportables)
+                
+                # Upload to remote server 
+                print('uploading seg dcm file to the remote server')
+                self.copySegmentationsToRemoteDicomweb(labelFileName) # this one uses dicomweb client 
+                
+                # Now delete the files from the temporary directory 
+                for f in os.listdir(downloadDirectory):
+                    os.remove(os.path.join(downloadDirectory, f))
+                # Delete the temporary directory 
+                os.rmdir(downloadDirectory)
+            
+                # also remove from the dicom database - it was added automatically?
+                
+            success = 1 
+        
+            if success:
+                # savedMessage = savedMessage + label.GetName() + '\n'
+                savedMessage = savedMessage + labelName + '\n' # SeriesDescription of SEG
+                logging.debug(label.GetName() + ' has been saved to ' + labelFileName)
+
+        
+        labelNodes = None
+        nodes = None
+        referenceVolumeNode = None
+        
+        return savedMessage
 
 #
 # MRunner2Test
