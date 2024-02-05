@@ -172,7 +172,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
 
         # Dorpdowns (hosts)
-        self.ui.hostSelector.addItems(self.logic.hosts)
+        self.ui.hostSelector.addItems(["localhost"] + self.logic.hosts)
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
@@ -259,16 +259,18 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Run processing when user clicks "Test Host" button.
         """
-        
-        # progressbar upgrade gradually for 10 seconds and stop when testSshHost returns either true or false
-        self.ui.prgTestHost.setRange(0, 100)
-        self.ui.prgTestHost.setValue(0)
-        self.ui.prgTestHost.setFormat("Testing host: %p%")
-        self.ui.prgTestHost.show()
-        
+            
         # try outsourced thread
-        self.sshHelper = SSHHHelper(progressBar=self.ui.prgTestHost)
-        self.sshHelper.run(hostid=self.ui.hostSelector.currentText)
+        self.sshHelper = SSHHHelper()
+        self.sshHelper.setup(
+            hostid=self.ui.hostSelector.currentText, 
+            hostSelector=self.ui.hostSelector,
+            cmdTestHost=self.ui.cmdTestHost,
+            lblHostTestStatus=self.ui.lblHostTestStatus,
+            lblHostConnectionStatus=self.ui.lblHostConnectionStatus, 
+            lblHostDockerVersion=self.ui.lblHostDockerVersion
+        )
+        self.sshHelper.start()
     
         
         # with slicer.util.tryWithErrorDisplay(_("Failed to test host."), waitCursor=True):
@@ -318,7 +320,58 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 # Asynchronous class for ssh operations
 #
 
-class SSHHHelper:
+class AsyncTask:
+    
+    timer: qt.QTimer
+    timeout: int = 20           # seconds
+    progress: int = 0           # seconds
+    
+    def __init__(self):        
+        # create qt timer
+        self.timer = qt.QTimer()
+        self.timer.setInterval(1000)
+        self.timer.timeout.connect(self.onTimeout)
+        
+    def onTimeout(self):
+        # update progress
+        self.progress += 1
+        if self.progress >= self.timeout:
+            self.onStop()
+            self.timer.stop()
+        
+        # cheak if thread stopped
+        if not self.thread.is_alive():
+            self.onStop()
+            self.timer.stop()
+            
+        # call onProgress
+        self.onProgress(self.progress)
+        
+    def start(self):
+        self.timer.start()
+        self.thread.start()
+        #self.work(*self.work_args, **self.work_kwargs)
+        self.onStart()
+        
+    def setup(self, *args, **kwargs):
+        import threading
+        self.work_args = args
+        self.work_kwargs = kwargs
+        self.thread = threading.Thread(target=self.work, args=args, kwargs=kwargs, daemon=False)
+
+    def onStart(self):
+        pass
+    
+    def onProgress(self, progress: int):
+        pass
+
+    def work(self):
+        pass
+    
+    def onStop(self):
+        pass
+
+class SSHHHelper(AsyncTask):
     
     # run various asynchroneous tests and retrieve information from host
     # - test: host availability (except localhost)
@@ -327,59 +380,99 @@ class SSHHHelper:
     # - test: docker version (optional)
     # - get:  available mhub images (all starting with mhubai/... except base)
     
-    timer: qt.QTimer
-    progress: int = 0
+    timeout: int = 100           # seconds
     
-    def __init__(self, progressBar):
-        self.progressBar = progressBar
-        
-        # create qt timer
-        self.timer = qt.QTimer()
-        self.timer.setInterval(1000)
-        self.timer.timeout.connect(self.onTimeout)
-        
-    def onTimeout(self):
-        # update progress
-        self.progress += 10
-        if self.progress >= 100:
-            self.timer.stop()
-        
-        # cheak if thread stopped
-        if not self.thread.is_alive():
-            self.timer.stop()
-            #self.progressBar.hide()
-        
-        # update ui
-        self.progressBar.setValue(self.progress)
     
-    def run(self, hostid: str):
-        import threading
-
-        # start timer
-        self.timer.start()
-
-        # create thread
-        self.thread = threading.Thread(target=self.work, args=(hostid,))
-        self.thread.start()
+    hostSelector: qt.QComboBox
+    cmdTestHost: qt.QPushButton
+    lblHostTestStatus: qt.QLabel
+    lblHostConnectionStatus: qt.QLabel
+    lblHostDockerVersion: qt.QLabel
+    canConnect: bool = False
+    dockerVersion: str = "N/A"
+    messages: List[str] = []
+    
+    def setup(self, hostid: str, hostSelector: qt.QComboBox, cmdTestHost: qt.QPushButton, lblHostTestStatus: qt.QLabel, lblHostConnectionStatus: qt.QLabel, lblHostDockerVersion: qt.QLabel):
+        super().setup(hostid=hostid)
+        self.hostSelector = hostSelector
+        self.cmdTestHost = cmdTestHost
+        self.lblHostTestStatus = lblHostTestStatus
+        self.lblHostConnectionStatus = lblHostConnectionStatus
+        self.lblHostDockerVersion = lblHostDockerVersion
+       
+    def onStart(self):
+        self.lblHostTestStatus.setText("Testing.")
+        self.hostSelector.enabled = False
+        self.cmdTestHost.enabled = False
+       
+    def onProgress(self, progress: int):
+        self.lblHostTestStatus.setText(f"Testing ({progress}s)")
+       
+    def onStop(self):
+        self.hostSelector.enabled = True
+        self.cmdTestHost.enabled = True
+        self.lblHostConnectionStatus.setText("OK" if self.canConnect else "Failed")
+        self.lblHostDockerVersion.setText(self.dockerVersion)
+        self.lblHostTestStatus.setText("Done.")
         
-
+        print("---------------------")
+        for message in self.messages:
+            print(message)
+        print("---------------------")
+       
     def work(self, hostid: str):
+        import subprocess
+        
+        # try connection
+        if hostid == "localhost":
+            self.canConnect = True
+        else:
+            try:
+                subprocess.run(["ssh", hostid, "exit"], timeout=5, check=True)
+                self.canConnect = True
+            except Exception as e:
+                self.canConnect = False
+                self.messages.append(f"Failed to connect to host: {hostid}: {e}")
+                
+        # get docker version
+        if hostid == "localhost":
+            try:
+                result = subprocess.run(["docker", "--version"], timeout=5, check=True, capture_output=True)
+                self.dockerVersion = result.stdout.decode('utf-8')
+            except Exception as e:
+                self.dockerVersion = "E"
+                self.messages.append(f"Failed to get docker version: {e}")  
+        elif self.canConnect:        
+            try:
+                result = subprocess.run(["ssh", hostid, "docker --version"], timeout=5, check=True, capture_output=True)
+                self.dockerVersion = result.stdout.decode('utf-8')
+            except Exception as e:
+                self.dockerVersion = "E"
+                self.messages.append(f"Failed to get docker version: {e}")
+                
+        
+       
+    def work_paramiko(self, hostid: str):
         from sshconf import read_ssh_config
         from os.path import expanduser
         import paramiko
+        import time
         
         # print
-        print(f"Testing host: {hostid}", flush=True)
+        #print(f"Testing host: {hostid}", flush=True)
+        self.messages.append(f"Testing host: {hostid}")
         
         # get host details
         c = read_ssh_config(expanduser("~/.ssh/config"))
 
         # assuming you have a host "svu"
         host = c.host(hostid)
-        print("host details", host, flush=True)  # print the settings
+        #print("host details", host, flush=True)  # print the settings
+        self.messages.append(f"host details: {host}")
         
         
         # instantiate ssh client
+        paramiko.util.log_to_file('/Users/lenny/Projects/SlicerMHubIntegration/SlicerMHubRunner/paramiko.log')
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         
@@ -390,17 +483,32 @@ class SSHHHelper:
                 username=host['user'] if 'user' in host else None,
                 port=host['port'] if 'port' in host else 22,
                 key_filename=expanduser(host['identityfile']) if 'identityfile' in host else None,
-                timeout=10
+                timeout=20,
+                allow_agent=False,
+                look_for_keys=False
             )
             
-            # check docker version and print results
-            stdin, stdout, stderr = ssh.exec_command('docker --version')
-            print(stdout.read().decode('utf-8'), flush=True)
+            #print(f"Connected to host: {hostid}", flush=True)
+            self.messages.append(f"Connected to host: {hostid}")
+            self.canConnect = True
             
-            ssh.close()
+            # check docker version and print results
+            stime = time.time()
+            stdin, stdout, stderr = ssh.exec_command('docker --version')
+            #print(stdout.read().decode('utf-8'), flush=True)
+            self.dockerVersion = stdout.read().decode('utf-8')
+            #print("duration for socker check: ", time.time()-stime, flush=True) # print the settings
+            self.messages.append(f"duration for socker check: {time.time()-stime}")
         except Exception as e:
-            print(f"Failed to connect to host: {hostid}: {e}", flush=True)
+            self.canConnect = False
+            self.dockerVersion = "E"
+            #print(f"Failed to connect to host: {hostid}: {e}", flush=True)
+            self.messages.append(f"Failed to connect to host: {hostid}: {e}")
+        finally:
+            ssh.close()
 
+        # end thread by returning
+        return 
 #
 # MRunner2Logic
 #
