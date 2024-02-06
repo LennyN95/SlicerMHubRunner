@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>325</width>
-    <height>527</height>
+    <width>479</width>
+    <height>709</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -86,24 +86,35 @@
         </property>
        </widget>
       </item>
+      <item row="1" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QComboBox" name="hostSelector"/>
+        </item>
+        <item>
+         <widget class="QPushButton" name="cmdTestHost">
+          <property name="maximumSize">
+           <size>
+            <width>80</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Test</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
       <item row="2" column="0">
        <widget class="QLabel" name="lblHostTestStatus">
+        <property name="font">
+         <font>
+          <italic>true</italic>
+         </font>
+        </property>
         <property name="text">
          <string/>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="QPushButton" name="cmdTestHost">
-        <property name="text">
-         <string>Test</string>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0">
-       <widget class="QLabel" name="label_3">
-        <property name="text">
-         <string>Connection Status</string>
         </property>
        </widget>
       </item>
@@ -128,8 +139,62 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
-       <widget class="QComboBox" name="hostSelector"/>
+      <item row="5" column="0">
+       <widget class="QLabel" name="label_5">
+        <property name="text">
+         <string>GPU Selection</string>
+        </property>
+       </widget>
+      </item>
+      <item row="5" column="1">
+       <widget class="QListWidget" name="lstHostGpu">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>80</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="label_7">
+        <property name="text">
+         <string>Storage</string>
+        </property>
+       </widget>
+      </item>
+      <item row="7" column="1">
+       <widget class="QLineEdit" name="lineEdit">
+        <property name="placeholderText">
+         <string>/tmp/mhub_3dslicer_extension</string>
+        </property>
+       </widget>
+      </item>
+      <item row="8" column="1">
+       <widget class="QCheckBox" name="checkBox">
+        <property name="text">
+         <string>Delete after completion</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="minimumSize">
+         <size>
+          <width>120</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>Connection Status</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>
@@ -140,7 +205,7 @@
       <string>Advanced</string>
      </property>
      <property name="collapsed">
-      <bool>true</bool>
+      <bool>false</bool>
      </property>
      <layout class="QFormLayout" name="formLayout_3">
       <item row="0" column="0">
@@ -160,6 +225,13 @@
         </property>
         <property name="invertThreshold" stdset="0">
          <string/>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QPushButton" name="cmdKillObservedProcesses">
+        <property name="text">
+         <string>Kill OProcs</string>
         </property>
        </widget>
       </item>
