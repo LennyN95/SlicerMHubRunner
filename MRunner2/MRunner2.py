@@ -972,7 +972,24 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         return models
     
     def getDockerExecutable(self) -> str:
-        return "/usr/local/bin/docker"    
+        #return "/usr/local/bin/docker"    
+        
+        # find docker executable
+        try:
+            import subprocess
+            docker_executable = subprocess.run(["which", "docker"], capture_output=True).stdout.decode('utf-8').strip('\n')
+        except Exception as e:
+            docker_executable = None
+            
+        # debug
+        print("Docker executable: ", docker_executable)
+            
+        # error
+        if docker_executable is None or docker_executable == "":
+            raise Exception("Docker executable not found.")
+        
+        # deliver
+        return docker_executable
     
     def getUdockerExecutable(self) -> str:
         return "/Applications/Slicer.app/Contents/lib/Python/bin/udocker"
