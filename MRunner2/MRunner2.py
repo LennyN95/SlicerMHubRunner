@@ -992,7 +992,9 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         return docker_executable
     
     def getUdockerExecutable(self) -> str:
-        return "/Applications/Slicer.app/Contents/lib/Python/bin/udocker"
+        return "/home/exouser/Downloads/Slicer-5.6.2-linux-amd64/lib/Python/bin/udocker" # <- linux: pip install executable
+        #return "/home/exouser/Downloads/Slicer-5.6.2-linux-amd64/lib/Python/lib/python3.9/site-packages/udocker" # <- linux: pip install directory
+        return "/Applications/Slicer.app/Contents/lib/Python/bin/udocker" #  <- macos: pip install executable
     
     def getBackendInformation(self, name: str) -> BackendInformation:
         assert name in ["docker", "udocker"]
