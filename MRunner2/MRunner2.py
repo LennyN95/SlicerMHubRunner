@@ -501,7 +501,8 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             
             import shutil
             
-            tmp_dir = "/Users/lenny/Projects/SlicerMHubIntegration/SlicerMHubRunner/return_data"
+            tmp_dir = "/tmp/mhub_slicer_extension"
+            #tmp_dir = "/Users/lenny/Projects/SlicerMHubIntegration/SlicerMHubRunner/return_data"
             input_dir = os.path.join(tmp_dir, "input")
             output_dir = os.path.join(tmp_dir, "output")
             
