@@ -186,6 +186,14 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.backendSelector.addItems(["docker", "udocker"])
         self.ui.backendSelector.connect('currentIndexChanged(int)', self.onBackendSelect)
 
+        # executable paths
+        self.ui.pthDockerExecutable.currentPath = self.logic.getDockerExecutable()
+        self.ui.pthUDockerExecutable.currentPath = self.logic.getUDockerExecutable()
+        self.ui.pthDockerExecutable.connect('currentPathChanged(QString)', self.onUpdateDockerExecutable)
+        self.ui.pthUDockerExecutable.connect('currentPathChanged(QString)', self.onUpdateUDockerExecutable)
+        self.ui.cmdDetectDockerExecutable.connect('clicked(bool)', self.onAutoDetectDockerExecutable)
+        self.ui.cmdDetectUDockerExecutable.connect('clicked(bool)', self.onAutoDetectUDockerExecutable)
+
         # load model repo
         self.ui.modelSelector.connect('currentIndexChanged(int)', self.onModelSelect)
         models = self.logic.getModels()
@@ -209,7 +217,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # run which python and which pip 
         import subprocess
         print(subprocess.run(["which", "python3"], capture_output=True).stdout.decode('utf-8'))
-        print(subprocess.run(["which", "pip3"], capture_output=True).stdout.decode('utf-8'))
+        print(subprocess.run(["which", "udocker"], capture_output=True).stdout.decode('utf-8'))
         
         # try the same with slicer.utils.consoleProcess
         p = slicer.util.launchConsoleProcess(["which", "python3"])
@@ -284,6 +292,43 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._parameterNodeGuiTag = self._parameterNode.connectGui(self.ui)
             self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self._checkCanApply)
             self._checkCanApply()
+
+
+    def onUpdateDockerExecutable(self) -> None:
+        # user enters a new path for the docker executable manually
+        
+        # get docker executable
+        docker_executable = self.ui.pthDockerExecutable.currentPath
+        
+        # set docker executable
+        self.logic._executables["docker"] = docker_executable
+    
+    def onAutoDetectDockerExecutable(self) -> None:
+        # user clicks on the detect button
+        
+        # get docker executable
+        docker_executable = self.logic.getDockerExecutable(refresh=True)
+        
+        # set docker executable
+        self.ui.pthDockerExecutable.currentPath = docker_executable
+        
+    def onUpdateUDockerExecutable(self) -> None:
+        # user enters a new path for the udocker executable manually
+        
+        # get udocker executable
+        udocker_executable = self.ui.pthUDockerExecutable.currentPath
+        
+        # set udocker executable
+        self.logic._executables["udocker"] = udocker_executable
+        
+    def onAutoDetectUDockerExecutable(self) -> None:
+        # user clicks on the detect button
+        
+        # get udocker executable
+        udocker_executable = self.logic.getUDockerExecutable(refresh=True)
+        
+        # set udocker executable
+        self.ui.pthUDockerExecutable.currentPath = udocker_executable
 
     def _checkCanApply(self, caller=None, event=None) -> None:
         
@@ -928,6 +973,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         """
         ScriptedLoadableModuleLogic.__init__(self)
         self.setupPythonRequirements()
+        self._executables: Dict[str, str] = {}
         self.hosts: List[str] = []
         self.hostInfo: Dict[str, HostInformation] = {}
 
@@ -971,7 +1017,11 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         # return
         return models
     
-    def getDockerExecutable(self) -> str:
+    def getDockerExecutable(self, refresh: bool = False) -> str:
+        
+        if not refresh and "docker" in self._executables and self._executables["docker"]:
+            return self._executables["docker"]
+        
         #return "/usr/local/bin/docker"    
         
         # find docker executable
@@ -979,7 +1029,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             import subprocess
             docker_executable = subprocess.run(["which", "docker"], capture_output=True).stdout.decode('utf-8').strip('\n')
         except Exception as e:
-            docker_executable = None
+             docker_executable = None
             
         # debug
         print("Docker executable: ", docker_executable)
@@ -988,13 +1038,45 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         if docker_executable is None or docker_executable == "":
             raise Exception("Docker executable not found.")
         
+        # cache
+        self._executables["docker"] = docker_executable
+        
         # deliver
         return docker_executable
     
-    def getUdockerExecutable(self) -> str:
-        return "/home/exouser/Downloads/Slicer-5.6.2-linux-amd64/lib/Python/bin/udocker" # <- linux: pip install executable
+    def getUDockerExecutable(self, refresh: bool = False) -> str:
+        # TODO: return optional and display installation instructions under backend tab
+        
+        # TODO: figure out installation path.
+        # TODO: pro/cons installing udocker in slicer vs. using system wide installation (also consider the nature of the tool)
+        #return "/home/exouser/Downloads/Slicer-5.6.2-linux-amd64/lib/Python/bin/udocker" # <- linux: pip install executable
         #return "/home/exouser/Downloads/Slicer-5.6.2-linux-amd64/lib/Python/lib/python3.9/site-packages/udocker" # <- linux: pip install directory
-        return "/Applications/Slicer.app/Contents/lib/Python/bin/udocker" #  <- macos: pip install executable
+        #return "/Applications/Slicer.app/Contents/lib/Python/bin/udocker" #  <- macos: pip install executable
+    
+
+        # cache lookup
+        if not refresh and "udocker" in self._executables and self._executables["udocker"]:
+            return self._executables["udocker"]
+
+        # find docker executable
+        try:
+            import subprocess
+            udocker_executable = subprocess.run(["which", "udocker"], capture_output=True).stdout.decode('utf-8').strip('\n')
+        except Exception as e:
+            udocker_executable = None
+            
+        # debug
+        print("UDocker executable: ", udocker_executable)
+            
+        # error
+        if udocker_executable is None or udocker_executable == "":
+            raise Exception("UDocker executable not found.")
+        
+        # cache
+        self._executables["udocker"] = udocker_executable
+        
+        # deliver
+        return udocker_executable
     
     def getBackendInformation(self, name: str) -> BackendInformation:
         assert name in ["docker", "udocker"]
@@ -1028,8 +1110,10 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
                 # slicer/util.py#L3857
                 
                 # run
-                udocker_exec = self.getUdockerExecutable()
+                udocker_exec = self.getUDockerExecutable()
+                print("running: ", udocker_exec, "--version")
                 result = subprocess.run([udocker_exec, "--version"], timeout=5, check=True, capture_output=True)
+                print("result: ", result.stdout.decode('utf-8'))
                 
                 # extract "version: x.x.x" from string
                 version = re.search(r"version: ([0-9]+\.[0-9]+\.[0-9]+)", result.stdout.decode('utf-8'))
@@ -1061,7 +1145,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         if not is_installed:
             # install udocker
             slicer.util.pip_install('udocker')
-            udocker_exec = self.getUdockerExecutable()
+            udocker_exec = self.getUDockerExecutable()
             
             # install additional dependencies
             slicer.util.launchConsoleProcess([udocker_exec, "install"]) # --force
@@ -1095,7 +1179,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
                 images = result.stdout.decode('utf-8').split("\n")
             
             elif backend == "udocker":
-                udocker_exec = self.getUdockerExecutable()
+                udocker_exec = self.getUDockerExecutable()
                 result = subprocess.run([udocker_exec, "images"], timeout=5, check=True, capture_output=True)
                 images = result.stdout.decode('utf-8').split("\n")
                 images = [image.split()[0] for image in images if image.startswith("mhubai/")]
@@ -1223,11 +1307,11 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
     def _run_mhub_udocker(self, model: str, gpu: bool, input_dir: str, output_dir: str, onProgress: Callable[[float], None], onStop: Callable, timeout: int = 600):
         
         # get executable
-        udocker_exec = self.getUdockerExecutable()
+        udocker_exec = self.getUDockerExecutable()
         
         # callback wrapper
         def _on_progress(cmd: ProcessChain.CMD, time: int):
-            print(f"Command {cmd.name} running {time} seconds")
+            #print(f"Command {cmd.name} running {time} seconds")
             onProgress(float(time))
             
         def _on_stop(success: bool):
