@@ -294,13 +294,14 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._checkCanApply()
 
 
-    def onUpdateDockerExecutable(self) -> None:
+    def onUpdateDockerExecutable(self, path) -> None:
         # user enters a new path for the docker executable manually
         
         # get docker executable
         docker_executable = self.ui.pthDockerExecutable.currentPath
         
         # set docker executable
+        print("---docker_executable-->", docker_executable, path)
         self.logic._executables["docker"] = docker_executable
     
     def onAutoDetectDockerExecutable(self) -> None:
@@ -312,13 +313,14 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # set docker executable
         self.ui.pthDockerExecutable.currentPath = docker_executable
         
-    def onUpdateUDockerExecutable(self) -> None:
+    def onUpdateUDockerExecutable(self, path) -> None:
         # user enters a new path for the udocker executable manually
         
         # get udocker executable
         udocker_executable = self.ui.pthUDockerExecutable.currentPath
         
         # set udocker executable
+        print("---udocker_executable-->", udocker_executable, path)
         self.logic._executables["udocker"] = udocker_executable
         
     def onAutoDetectUDockerExecutable(self) -> None:
@@ -1017,26 +1019,34 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         # return
         return models
     
-    def getDockerExecutable(self, refresh: bool = False) -> str:
-        
+    def getDockerExecutable(self, refresh: bool = False) -> Optional[str]:
+        import platform
+        import subprocess
+
         if not refresh and "docker" in self._executables and self._executables["docker"]:
             return self._executables["docker"]
         
-        #return "/usr/local/bin/docker"    
-        
-        # find docker executable
-        try:
-            import subprocess
-            docker_executable = subprocess.run(["which", "docker"], capture_output=True).stdout.decode('utf-8').strip('\n')
-        except Exception as e:
-             docker_executable = None
+        # get operation system
+        ops = platform.system()
+                
+        # find docker executable (windows, any linux, mac)
+        docker_executable = None
+        if ops == "Windows":
+            docker_executable = "C:\Program Files\Docker\Docker"
+        elif ops == "Darwin":
+            docker_executable = "/usr/local/bin/docker"
+        elif ops == "Linux":
+            try:
+                docker_executable = subprocess.run(["which", "docker"], capture_output=True).stdout.decode('utf-8').strip('\n')
+            except Exception as e:
+                pass
             
         # debug
         print("Docker executable: ", docker_executable)
             
         # error
         if docker_executable is None or docker_executable == "":
-            raise Exception("Docker executable not found.")
+            print("WARNING: ", "Docker executable not found.")
         
         # cache
         self._executables["docker"] = docker_executable
@@ -1044,7 +1054,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         # deliver
         return docker_executable
     
-    def getUDockerExecutable(self, refresh: bool = False) -> str:
+    def getUDockerExecutable(self, refresh: bool = False) -> Optional[str]:
         # TODO: return optional and display installation instructions under backend tab
         
         # TODO: figure out installation path.
@@ -1053,24 +1063,30 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         #return "/home/exouser/Downloads/Slicer-5.6.2-linux-amd64/lib/Python/lib/python3.9/site-packages/udocker" # <- linux: pip install directory
         #return "/Applications/Slicer.app/Contents/lib/Python/bin/udocker" #  <- macos: pip install executable
     
+        import platform
+        import subprocess
 
         # cache lookup
         if not refresh and "udocker" in self._executables and self._executables["udocker"]:
             return self._executables["udocker"]
 
+        # get operation system
+        ops = platform.system()
+
         # find docker executable
-        try:
-            import subprocess
-            udocker_executable = subprocess.run(["which", "udocker"], capture_output=True).stdout.decode('utf-8').strip('\n')
-        except Exception as e:
-            udocker_executable = None
+        udocker_executable = None
+        if ops == "Linux":
+            try:
+                udocker_executable = subprocess.run(["which", "udocker"], capture_output=True).stdout.decode('utf-8').strip('\n')
+            except Exception as e:
+                pass
             
         # debug
-        print("UDocker executable: ", udocker_executable)
+        print("U-Docker executable: ", udocker_executable)
             
         # error
         if udocker_executable is None or udocker_executable == "":
-            raise Exception("UDocker executable not found.")
+            print("WARNING: ", "U-Docker executable not found.")
         
         # cache
         self._executables["udocker"] = udocker_executable
@@ -1090,6 +1106,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         if name == "docker":
             try:
                 docker_exec = self.getDockerExecutable()
+                print("running" , docker_exec, "--version")
                 result = subprocess.run([docker_exec, "--version"], timeout=5, check=True, capture_output=True)
                 bi.version = result.stdout.decode('utf-8')
                 bi.available = True
