@@ -435,11 +435,19 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # if no image selected, disable update and remove buttons
         selected = self.ui.lstBackendImages.currentItem()
         
+        # check if selected item is enabled
+        # FIXME: somehow, & operator didn't work with `selected.flags() & qt.Qt.ItemIsEnabled`, but as we set qt.Qt.ItemIsEnabled as the only flag, this should be ok at least for now.
+        enabled = selected.flags() != qt.Qt.ItemIsEnabled
+        
         # enable / disable image actions
-        self.ui.cmdImageUpdate.enabled = selected is not None
-        self.ui.cmdImageRemove.enabled = selected is not None
+        self.ui.cmdImageUpdate.enabled = selected is not None and enabled
+        self.ui.cmdImageRemove.enabled = selected is not None and enabled
+        
+        # debug
+        print(f"Selected image: {selected.text()}, status: {enabled}")
     
     def onBackendImageUpdate(self) -> None:
+        assert self.logic
 
         # get selected image
         selected = self.ui.lstBackendImages.currentItem()
@@ -447,8 +455,35 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         # debug
         print(f"Updating image: {image_name}")
+        
+        # show a message box
+        msg = qt.QMessageBox()
+        msg.setIcon(qt.QMessageBox.Warning)
+        msg.setText(f"Do you want to update image {image_name}?")
+        msg.setWindowTitle("Update image")
+        msg.setStandardButtons(qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
+        msg.setDefaultButton(qt.QMessageBox.Cancel)
+        ret = msg.exec_()
+        
+        if ret != qt.QMessageBox.Ok:
+            return
+        
+        # debug
+        print("Updating image")
+        
+        # add `updating...` to image and disable entry
+        selected.setText(f"{image_name} (updating...)")
+        selected.setFlags(qt.Qt.ItemIsEnabled)
+        
+        # on stop callback removes `updating...` from image
+        def on_stop(*args):
+            selected.setText(image_name)
+            
+        # update image
+        self.logic.update_image(image_name, on_stop=on_stop)
     
     def onBackendImageRemove(self) -> None:
+        assert self.logic
         
         # get selected image
         selected = self.ui.lstBackendImages.currentItem()
@@ -456,6 +491,32 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         # debug
         print(f"Removing image: {image_name}")
+        
+        # show a message box
+        msg = qt.QMessageBox()
+        msg.setIcon(qt.QMessageBox.Warning)
+        msg.setText(f"Do you want to remove image {image_name}?")
+        msg.setWindowTitle("Remove image")
+        msg.setStandardButtons(qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
+        msg.setDefaultButton(qt.QMessageBox.Cancel)
+        ret = msg.exec_()
+        
+        if ret != qt.QMessageBox.Ok:
+            return
+        
+        # debug
+        print("Removing image")
+        
+        # add `removing...` to image and disable entry
+        selected.setText(f"{image_name} (removing...)")
+        selected.setFlags(qt.Qt.ItemIsEnabled)
+        
+        # on stop callback removes entry
+        def on_stop(*args):
+            self.ui.lstBackendImages.takeItem(self.ui.lstBackendImages.row(selected))
+        
+        # remove image
+        self.logic.remove_image(image_name, on_stop=on_stop)
 
     def updateBackendImagesList(self) -> None:
         assert self.logic is not None
@@ -1192,9 +1253,10 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         try:
             if backend == "docker":
                 docker_exec = self.getDockerExecutable()
-                result = subprocess.run([docker_exec, "images", "--filter", "reference=mhubai/*", "--format", "{{.Repository}}"], timeout=5, check=True, capture_output=True)
-                images = result.stdout.decode('utf-8').split("\n")
-            
+                result = subprocess.run([docker_exec, "images", "--filter", "reference=mhubai/*", "--format", "{{.Repository}}|{{.Tag}}|{{.Size}}"], timeout=5, check=True, capture_output=True)
+                images = [i.split("|") for i in result.stdout.decode('utf-8').split("\n")]
+                images = [f"{i[0]}:latest ({i[2]})" for i in images if len(i) == 3 and i[1] == "latest"]
+                
             elif backend == "udocker":
                 udocker_exec = self.getUDockerExecutable()
                 result = subprocess.run([udocker_exec, "images"], timeout=5, check=True, capture_output=True)
@@ -1421,7 +1483,31 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         elif backend == "udocker":
             self._run_mhub_udocker(model, gpus is not None, input_dir, output_dir, _on_progress, _on_stop, timeout)
 
-    
+
+    def remove_image(self, image_name, on_stop = None, timeout: int = 5):
+        
+        # get docker executable
+        docker_exec = self.getDockerExecutable()
+        
+        # remove image cli command
+        cmd = [docker_exec, "rmi", image_name]
+        
+        # run command in bg
+        po = ProgressObserver(cmd, frequency=2, timeout=timeout)
+        if on_stop: po.onStop(on_stop)
+
+    def update_image(self, image_name, on_stop = None, timeout: int = 5):
+        
+        # get docker executable
+        docker_exec = self.getDockerExecutable()
+        
+        # remove image cli command
+        cmd = [docker_exec, "pull", image_name]
+        
+        # run command in bg
+        po = ProgressObserver(cmd, frequency=2, timeout=timeout)
+        if on_stop: po.onStop(on_stop)
+        
 
     def scanDirectoryForFilesWithExtension(self, local_dir: str, extension: str = ".seg.dcm") -> List[str]:
         """
