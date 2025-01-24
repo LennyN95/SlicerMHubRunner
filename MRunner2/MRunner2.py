@@ -182,6 +182,12 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.cmdImageUpdate.connect('clicked(bool)', self.onBackendImageUpdate)
         self.ui.cmdImageRemove.connect('clicked(bool)', self.onBackendImageRemove)
                 
+        # search box "searchModel" and model list "lstModelList"
+        self.ui.searchModel.textChanged.connect(self.onSearchModel)
+        #self.ui.lstModelList.connect('itemSelectionChanged()', self.onModelSelect)
+        self.ui.tblModelList.connect('cellClicked(int, int)', self.onModelSelectFromTable)
+        self.onSearchModel("")
+                
         # Dropdowns
         self.ui.backendSelector.addItems(["docker", "udocker"])
         self.ui.backendSelector.connect('currentIndexChanged(int)', self.onBackendSelect)
@@ -194,12 +200,15 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.cmdDetectDockerExecutable.connect('clicked(bool)', self.onAutoDetectDockerExecutable)
         self.ui.cmdDetectUDockerExecutable.connect('clicked(bool)', self.onAutoDetectUDockerExecutable)
 
+        # input node
+        # self.ui.inputSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onInputNodeSelect)
+
         # load model repo
-        self.ui.modelSelector.connect('currentIndexChanged(int)', self.onModelSelect)
-        models = self.logic.getModels()
-        self.ui.modelSelector.clear()
-        for model in models:
-            self.ui.modelSelector.addItem(model)
+        # self.ui.modelSelector.connect('currentIndexChanged(int)', self.onModelSelect)
+        # models = self.logic.getModels()
+        # self.ui.modelSelector.clear()
+        # for model in models:
+        #     self.ui.modelSelector.addItem(model)
 
         # load gpus
         self.updateHostGpuList()
@@ -380,11 +389,142 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def loadModelRepo(self) -> None:
         pass
+    
+    def onSearchModel(self, text: str) -> None:
+        print("Search model: ", text)
+        
+        # TODO: proper caching
+        # load models
+        if not hasattr(self, "_model_cache"):
+            self._model_cache = self.logic.getModels()
+            
+        # filter models
+        models = [model for model in self._model_cache if text.lower() in model.lower()]
+        
+        # update model list
+        # self.ui.lstModelList.clear()
+        # for model in models:
+        #     self.ui.lstModelList.addItem(model)
+            
+        # set table height to 10 rows
+        self.ui.tblModelList.setRowCount(10)
+                    
+        # remove all rows from model table
+        self.ui.tblModelList.setRowCount(0)
+
+        # add models to table with 3 columns
+        self.ui.tblModelList.setColumnCount(4)
+        self.ui.tblModelList.setHorizontalHeaderLabels(["Model", "Type", "Image", "Actions"])
+
+        # make table rows slim
+        self.ui.tblModelList.verticalHeader().setDefaultSectionSize(20)
+        
+        # make table columns use all available space
+        self.ui.tblModelList.horizontalHeader().setStretchLastSection(True)
+        
+        # fill table with models that match the search text
+        for model in models:
+            rowPosition = self.ui.tblModelList.rowCount
+            self.ui.tblModelList.insertRow(rowPosition)
+            
+            # add model name
+            self.ui.tblModelList.setItem(rowPosition, 0, qt.QTableWidgetItem(model))
+            
+            # add model type (placeholder)
+            self.ui.tblModelList.setItem(rowPosition, 1, qt.QTableWidgetItem("type"))
+            
+            # add model image (placeholder) 
+            self.ui.tblModelList.setItem(rowPosition, 2, qt.QTableWidgetItem("image"))
+            
+            # create horizontal layout, add pull, run, and details buttons, and set layout to cell
+            layout = qt.QHBoxLayout()
+            layout.setSpacing(0)
+            layout.setContentsMargins(0,0,0,0)
+            
+            # Create function that creates a new scope for each button
+            def create_pull_handler(btnPull, model):
+                return lambda: self.onModelPull(btnPull, model)
+
+            def create_run_handler(btnRun, model):
+                return lambda: self.onModelRun(btnRun, model)
+
+            def create_details_handler(model):
+                return lambda: self.onModelDetails(model)
+            
+            def create_web_handler(model):
+                return lambda: self.onModelWeb(model)
+
+            btnPull = qt.QPushButton("Pull")
+            btnPull.clicked.connect(create_pull_handler(btnPull, model))
+            layout.addWidget(btnPull)
+
+            btnRun = qt.QPushButton("Run")
+            btnRun.clicked.connect(create_run_handler(btnRun, model))
+            layout.addWidget(btnRun)
+
+            btnDetails = qt.QPushButton("Details")
+            btnDetails.clicked.connect(create_details_handler(model))
+            layout.addWidget(btnDetails)
+
+            btnWeb = qt.QPushButton("Web")
+            btnWeb.clicked.connect(create_web_handler(model))
+            layout.addWidget(btnWeb)
+            
+            widget = qt.QWidget()
+            widget.setLayout(layout)
+            self.ui.tblModelList.setCellWidget(rowPosition, 3, widget)
+            
+    def onModelWeb(self, model: str) -> None:
+        
+        # open model in web
+        url = "https://mhub.ai/models/" + model
+        slicer.util.openUrlInDefaultWebBrowser(url)    
+        
+    def onModelPull(self, button: qt.QPushButton, model_name: str) -> None:
+        assert self.logic is not None
+        
+        # disable button and block table selection signals temporarily
+        self.ui.tblModelList.blockSignals(True)
+        button.enabled = False
+        self.ui.tblModelList.blockSignals(False)
+        
+        # construct image name
+        image_name = f"mhubai/{model_name}:latest"
+        
+        # debug
+        print("Pulling image: ", image_name)
+        
+        # # on stop handler
+        # def on_stop(*args):
+        #     button.enabled = True
+        #     self.updateBackendImagesList()
+            
+        #     # debug
+        #     print(f"Image {image_name} pulled, args: {args}")
+        
+        # # pull model
+        # self.logic.update_image(image_name, on_stop=on_stop)
+            
 
     def onModelSelect(self, index: int) -> None:
         
+        # debug
+        print("Model selected: ", index)
+        
         # get model name
         model_name = self.ui.modelSelector.currentText
+        
+        # update model page
+        url = "https://mhub.ai/models/" + model_name
+        self.ui.lblModelPage.text = f'<a href="{url}">{url}</a>'
+        
+    def onModelSelectFromTable(self, row: int, col: int) -> None:
+        
+        # get model name
+        model_name = self.ui.tblModelList.item(row, 0).text()
+
+        # debug
+        print("Model selected: ", row, col, model_name)
         
         # update model page
         url = "https://mhub.ai/models/" + model_name
@@ -1066,6 +1206,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         import requests, json
         
         # download model information from api endpoint (json)
+        # TODO: use https://mhub.ai/api/v2/models/detailed, filter for segmentation models
         MHUBAI_API_ENDPOINT_MODELS = "https://mhub.ai/api/v2/models"
         
         # fetch
@@ -1484,7 +1625,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             self._run_mhub_udocker(model, gpus is not None, input_dir, output_dir, _on_progress, _on_stop, timeout)
 
 
-    def remove_image(self, image_name, on_stop = None, timeout: int = 5):
+    def remove_image(self, image_name, on_stop = None, timeout: int = 0):
         
         # get docker executable
         docker_exec = self.getDockerExecutable()
@@ -1496,7 +1637,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         po = ProgressObserver(cmd, frequency=2, timeout=timeout)
         if on_stop: po.onStop(on_stop)
 
-    def update_image(self, image_name, on_stop = None, timeout: int = 5):
+    def update_image(self, image_name, on_stop = None, timeout: int = 0):
         
         # get docker executable
         docker_exec = self.getDockerExecutable()
