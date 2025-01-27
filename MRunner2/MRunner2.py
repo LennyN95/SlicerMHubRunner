@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Annotated, Any, Optional, List, Callable, Literal, Dict
 from dataclasses import dataclass
+import tempfile
 
 import slicer, ctk, vtk, qt
 from slicer.i18n import tr as _
@@ -436,6 +437,10 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # select full row when cell is clicked
         self.ui.tblModelList.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
         
+        # make first column (model label) stretchable
+        # NOTE: makes label column un-editable - not the best UX?!
+        self.ui.tblModelList.horizontalHeader().setSectionResizeMode(0, qt.QHeaderView.Stretch)
+        
         # fill table with models that match the search text
         for model in models:
             rowPosition = self.ui.tblModelList.rowCount
@@ -445,7 +450,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             label_item = qt.QTableWidgetItem(model.label)
             label_item.setData(qt.Qt.UserRole, model)
             self.ui.tblModelList.setItem(rowPosition, 0, label_item)
-            
+                        
             # add model type (placeholder)
             self.ui.tblModelList.setItem(rowPosition, 1, qt.QTableWidgetItem(",".join(model.categories)))
             
@@ -1126,13 +1131,28 @@ class ProgressObserver:
         self._seconds_elapsed = 0.0
         
         self._proc = None
-        self._onProgress: Optional[Callable[[float], None]] = None
+        self._onProgress: Optional[Callable[[float, Optional[str]], None]] = None
         self._onStop: Optional[Callable[[bool, int], None]] = None
         
         # initialize timer
         self._timer: qt.QTimer = qt.QTimer()
         self._timer.setInterval(1000/frequency)
         self._timer.timeout.connect(self._onTimeout)
+        
+        # create a temp file for stdout
+        stdout_file = tempfile.NamedTemporaryFile(delete=False, prefix="mhub_slicer_stdout_", suffix=".txt")
+        stdout_file.close()
+        
+        print("Temp File Created: ", stdout_file.name)
+        self._stdout_file_name = stdout_file.name
+    
+        # create empty file
+        with open(stdout_file.name, 'w') as f:
+            f.write("")
+            
+        # print if file exists
+        print("Temp File Exists: ", self._stdout_file_name, os.path.exists(self._stdout_file_name))
+        self._stdout_readpointer = 0
         
         # run command
         self._run(cmd)
@@ -1143,8 +1163,27 @@ class ProgressObserver:
     def _run(self, cmd: List[str]):
         import subprocess
         
-        self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # run command
+        self._proc = subprocess.Popen(
+            cmd, 
+            stdout=open(self._stdout_file_name, 'w'), 
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        # start timer
         self._timer.start()
+
+    def _stop(self, timedout: bool, killed: bool, returncode: int):
+        
+        # cleanup (delete stdout file)
+        print("Remove temp file", self._stdout_file_name, os.path.exists(self._stdout_file_name))
+        #os.remove(self._stdout_file_name)
+
+        # stop callback
+        # TODO: include killed and re-arrange to returncode, timedout, killed
+        if self._onStop:
+            self._onStop(timedout, returncode)
 
     def _onTimeout(self):
         assert self._proc is not None
@@ -1156,34 +1195,37 @@ class ProgressObserver:
         if self._timeout > 0 and self._seconds_elapsed > self._timeout:
             self._timer.stop()
             self._proc.kill()
-            
-            # invoke callback if defined
-            if self._onStop:
-                self._onStop(True, -1)
+            self._stop(True, False, -1)
         
         # stop timer if process is done
         if self._proc.poll() is not None:
             returncode = self._proc.returncode
             self._timer.stop()
-
-            # invoke callback if defined
-            if self._onStop:
-                self._onStop(False, returncode)
+            self._stop(False, False, returncode)
                 
             return
 
         # call progress method
         if self._onProgress:
-            # self._proc.stdout.read().decode('utf-8') # <--- carful, can block, only when needed and do experiment
-            self._onProgress(self._seconds_elapsed)
+            # self._proc.stdout.read().decode('utf-8') # <--- carful, can block, only when needed and do experiment        
+            
+            # fetch the latest process stdout from file
+            with open(self._stdout_file_name, 'r') as f:
+                f.seek(self._stdout_readpointer)
+                stdout = f.read()
+                self._stdout_readpointer = f.tell()
+            
+            # call progress callback
+            self._onProgress(self._seconds_elapsed, stdout)
 
     def onStop(self, callback: Callable[[bool, int], None]):
         self._onStop = callback
         
-    def onProgress(self, callback: Callable[[float], None]):
+    def onProgress(self, callback: Callable[[float, Optional[str]], None]):
         self._onProgress = callback
 
     def kill(self):
+        self._stop(False, True, -1)
         self._timer.stop()
         if self._proc is not None:
             self._proc.kill()
@@ -1804,6 +1846,13 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         # run command in bg
         po = ProgressObserver(cmd, frequency=2, timeout=timeout)
         if on_stop: po.onStop(on_stop)
+        
+        # log output 
+        def onProgress(t, stdout):
+            print(f"------- update image stdout ({t}) --------")
+            print(stdout)
+            print()
+        po.onProgress(onProgress)
         
 
     def scanDirectoryForFilesWithExtension(self, local_dir: str, extension: str = ".seg.dcm") -> List[str]:
