@@ -344,7 +344,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def _checkCanApply(self, caller=None, event=None) -> None:
         
         # check if model is selected
-        # TODO: ...
+        model = self.getModelFromTableSelection()
         
         # check if backend is selected / available
         # TODO: ...
@@ -353,12 +353,24 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # TODO: ...
                 
         # check if input is selected
-        if self._parameterNode and self._parameterNode.inputVolume:
+        if model and model.inputs_compatibility and self._parameterNode and self._parameterNode.inputVolume:
             self.ui.applyButton.toolTip = _("Compute output volume")
             self.ui.applyButton.enabled = True
+            self.ui.applyButton.text = f"Run {model.label}"
         else:
             self.ui.applyButton.toolTip = _("Select input volume node")
             self.ui.applyButton.enabled = False
+            
+            if not model:
+                self.ui.applyButton.text = "Select an MHub.ai Model"
+            elif not self._parameterNode or not self._parameterNode.inputVolume:
+                self.ui.applyButton.text = "Select an Input Volume"
+            elif not model.inputs_compatibility:
+                self.ui.applyButton.text = "Select a Model compatible with 3D Slicer Extension"
+                self.ui.applyButton.toolTip = _("The 3D Slicer extension only supports segmentation models with a single DICOM input. For all other models, use the Web button to get more information on how you can run the model from the command line.")
+            else:
+                self.ui.applyButton.text = "N/A"
+        
 
     def onKillObservedProcessesButton(self) -> None:
         """
@@ -462,9 +474,9 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             btnPull.clicked.connect(create_pull_handler(btnPull, model))
             layout.addWidget(btnPull)
 
-            btnRun = qt.QPushButton("Run")
-            btnRun.clicked.connect(create_run_handler(btnRun, model))
-            layout.addWidget(btnRun)
+            # btnRun = qt.QPushButton("Run")
+            # btnRun.clicked.connect(create_run_handler(btnRun, model))
+            # layout.addWidget(btnRun)
 
             btnDetails = qt.QPushButton("Details")
             btnDetails.clicked.connect(create_details_handler(model))
@@ -493,12 +505,23 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # get model
         #model = self.logic.getModel(model_name)
         
+        # helper to generate headline-list strings
+        def hlst(headline: str, items: list[str]) -> str:
+            return f"{headline}:\n" +  "\n".join([f"  - {item}" for item in items])
+        
+        # generate model details string    
+        details = [model.label]
+        details += [model.description]
+        details += [hlst("Modalities", model.modalities)]
+        details += [hlst("Categories", model.categories)]
+        details += [hlst("Inputs", model.inputs)]
+        
         # display popup with model details
         msg = qt.QMessageBox()
         msg.setIcon(qt.QMessageBox.Information)
         msg.setWindowTitle(model.label)
         msg.setText(model.description)
-        msg.setDetailedText(f"Model: {model.label}\nDescription: {model.description}\nModalities: {model.modalities}\nCategories: {model.categories}")
+        msg.setDetailedText("\n\n".join(details))
         
         # add buttons
         msg.addButton(qt.QMessageBox.Ok)
@@ -556,24 +579,23 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # import into database and load sample
         
         pass 
-
-    def onModelSelect(self, index: int) -> None:
+    
+    def getModelFromTableSelection(self, row: Optional[int] = None) -> Optional['Model']:
         
-        # debug
-        print("Model selected: ", index)
+        # get selected row
+        row = self.ui.tblModelList.currentRow() if row is None else row
         
-        # get model name
-        model_name = self.ui.modelSelector.currentText
+        # get model from row
+        item = self.ui.tblModelList.item(row, 0)
+        model = item.data(qt.Qt.UserRole) if item else None
         
-        # update model page
-        url = "https://mhub.ai/models/" + model_name
-        self.ui.lblModelPage.text = f'<a href="{url}">{url}</a>'
+        return model
         
     def onModelSelectFromTable(self, row: int, col: int) -> None:
         
         # get model name
-        model = self.ui.tblModelList.item(row, 0).data(qt.Qt.UserRole)
-        model_name = model.name
+        model = self.getModelFromTableSelection(row)
+        model_name = model.name if model else "N/A"
 
         # debug
         print("Model selected: ", row, col, model_name)
@@ -581,6 +603,9 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # update model page
         url = "https://mhub.ai/models/" + model_name
         self.ui.lblModelPage.text = f'<a href="{url}">{url}</a>'
+        
+        # update apply button
+        self._checkCanApply()
 
     def onBackendSelect(self, index: int) -> None:
         self.onBackendUpdate()
@@ -792,7 +817,8 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         instance_idh = hash.hexdigest()
 
         # get selected model
-        model_name = self.ui.modelSelector.currentText
+        model = self.getModelFromTableSelection()
+        assert model is not None, "No model selected"
 
         print(instance_idh)
     
@@ -833,11 +859,11 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             
             # update apply button elapsed time
             def onProgress(progress: float):
-                self.ui.applyButton.text = f"Applying ({progress}s)"
+                self.ui.applyButton.text = f"Running {model.label} ({progress}s)"
             
             #
             self.logic.run_mhub(
-                model=model_name,
+                model=model.name,
                 backend=backend,
                 gpus=gpus,
                 input_dir=input_dir,
@@ -845,7 +871,6 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 onProgress=onProgress,
                 onStop=self._checkCanApply
             )
-        
             
        
 #
@@ -1313,7 +1338,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         for model_data in payload['data']:
             
             # check if model inputs are compatible with slicer extension
-            inputs_compatibility = len(model_data['inputs']) == 1 and all([i['format'].lower() == 'dicom' for i in model_data['inputs']])
+            inputs_compatibility = len(model_data['inputs']) == 1 and all([i['format'].lower() == 'dicom' for i in model_data['inputs']]) and 'Segmentation' in model_data['categories']
             
             # create model
             models.append(Model(
