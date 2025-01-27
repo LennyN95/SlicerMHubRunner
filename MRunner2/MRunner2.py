@@ -280,13 +280,15 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """
         Ensure parameter node exists and observed.
         """
+        assert self.logic is not None
+        
         # Parameter node stores all user choices in parameter values, node selections, etc.
         # so that when the scene is saved and reloaded, these settings are restored.
 
         self.setParameterNode(self.logic.getParameterNode())
 
         # Select default input nodes if nothing is selected yet to save a few clicks for the user
-        if not self._parameterNode.inputVolume:
+        if self._parameterNode and not self._parameterNode.inputVolume:
             firstVolumeNode = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLScalarVolumeNode")
             if firstVolumeNode:
                 self._parameterNode.inputVolume = firstVolumeNode
@@ -338,6 +340,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             print("Selected item: ", shNode.GetItemName(items.GetId(i)))
 
     def onUpdateDockerExecutable(self, path) -> None:
+        assert self.logic is not None
         # user enters a new path for the docker executable manually
         
         # get docker executable
@@ -348,6 +351,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic._executables["docker"] = docker_executable
     
     def onAutoDetectDockerExecutable(self) -> None:
+        assert self.logic is not None
         # user clicks on the detect button
         
         # get docker executable
@@ -357,6 +361,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.pthDockerExecutable.currentPath = docker_executable
         
     def onUpdateUDockerExecutable(self, path) -> None:
+        assert self.logic is not None
         # user enters a new path for the udocker executable manually
         
         # get udocker executable
@@ -367,6 +372,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic._executables["udocker"] = udocker_executable
         
     def onAutoDetectUDockerExecutable(self) -> None:
+        assert self.logic is not None
         # user clicks on the detect button
         
         # get udocker executable
@@ -915,6 +921,9 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 # display stdout in txtLogs
                 if stdout is not None and stdout.strip() != "":
                     self.ui.txtLogs.appendPlainText(stdout)
+                   
+            def onStop(returncode: int, stdout: str, timedout: bool, killed: bool):
+                self._checkCanApply()
                                 
             #
             self.logic.run_mhub(
@@ -924,7 +933,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 input_dir=input_dir,
                 output_dir=output_dir,
                 onProgress=onProgress,
-                onStop=self._checkCanApply
+                onStop=onStop
             )
             
        
@@ -932,60 +941,60 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 # Asynchronous class for ssh operations
 #
 
-class AsyncTask:
+# class AsyncTask:
     
-    timer: qt.QTimer
-    timeout: int = 20           # seconds
-    progress: int = 0           # seconds
+#     timer: qt.QTimer
+#     timeout: int = 20           # seconds
+#     progress: int = 0           # seconds
     
-    def __init__(self):        
-        # create qt timer
-        self.timer = qt.QTimer()
-        self.timer.setInterval(100)
-        self.timer.timeout.connect(self.onTimeout)
+#     def __init__(self):        
+#         # create qt timer
+#         self.timer = qt.QTimer()
+#         self.timer.setInterval(100)
+#         self.timer.timeout.connect(self.onTimeout)
         
-    def onTimeout(self):
-        # update progress
-        self.progress += 1
-        if self.progress >= self.timeout * 10:
-            self.onStop()
-            self.timer.stop()
+#     def onTimeout(self):
+#         # update progress
+#         self.progress += 1
+#         if self.progress >= self.timeout * 10:
+#             self.onStop()
+#             self.timer.stop()
         
-        # cheak if thread stopped
-        if not self.thread.is_alive():
-            self.onStop()
-            self.timer.stop()
+#         # cheak if thread stopped
+#         if not self.thread.is_alive():
+#             self.onStop()
+#             self.timer.stop()
             
-        # call onProgress
-        self.onProgress(int(self.progress / 10))
+#         # call onProgress
+#         self.onProgress(int(self.progress / 10))
         
-    def start(self):
-        self.beforeStart()
-        self.timer.start()
-        self.thread.start()
-        #self.work(*self.work_args, **self.work_kwargs)
-        self.onStart()
+#     def start(self):
+#         self.beforeStart()
+#         self.timer.start()
+#         self.thread.start()
+#         #self.work(*self.work_args, **self.work_kwargs)
+#         self.onStart()
         
-    def setup(self, *args, **kwargs):
-        import threading
-        self.work_args = args
-        self.work_kwargs = kwargs
-        self.thread = threading.Thread(target=self.work, args=args, kwargs=kwargs, daemon=False)
+#     def setup(self, *args, **kwargs):
+#         import threading
+#         self.work_args = args
+#         self.work_kwargs = kwargs
+#         self.thread = threading.Thread(target=self.work, args=args, kwargs=kwargs, daemon=False)
 
-    def beforeStart(self):
-        pass
+#     def beforeStart(self):
+#         pass
 
-    def onStart(self):
-        pass
+#     def onStart(self):
+#         pass
     
-    def onProgress(self, progress: int):
-        pass
+#     def onProgress(self, progress: int):
+#         pass
 
-    def work(self):
-        pass
+#     def work(self):
+#         pass
     
-    def onStop(self):
-        pass
+#     def onStop(self):
+#         pass
 
 @dataclass
 class Model:
@@ -1009,141 +1018,141 @@ class Model:
             return True
         return False
     
-@dataclass
-class HostInformation:
-    name: str
-    canConnect: bool
-    testedOn: datetime
+# @dataclass
+# class HostInformation:
+#     name: str
+#     canConnect: bool
+#     testedOn: datetime
     
-    dockerVersion: str
-    gpus: List[str]
-    cachedSubjects: List[str]
+#     dockerVersion: str
+#     gpus: List[str]
+#     cachedSubjects: List[str]
 
-@dataclass
-class BackendInformation:
-    name: str
-    version: str
-    available: bool
+# @dataclass
+# class BackendInformation:
+#     name: str
+#     version: str
+#     available: bool
 
-class SSHHHelper(AsyncTask):
+# class SSHHHelper(AsyncTask):
     
-    # run various asynchroneous tests and retrieve information from host
-    # - test: host availability (except localhost)
-    # - test: docker availability
-    # - get:  docker version
-    # - test: docker version (optional)
-    # - get:  available mhub images (all starting with mhubai/... except base)
+#     # run various asynchroneous tests and retrieve information from host
+#     # - test: host availability (except localhost)
+#     # - test: docker availability
+#     # - get:  docker version
+#     # - test: docker version (optional)
+#     # - get:  available mhub images (all starting with mhubai/... except base)
     
-    timeout: int = 100           # seconds
+#     timeout: int = 100           # seconds
     
-    # status variables (set from worker thread and read from main thread)
-    messages: List[str] = []
-    canConnect: bool = False
-    dockerVersion: str = "N/A"
-    gpus: List[str] = []
-    cache: List[str] = []
+#     # status variables (set from worker thread and read from main thread)
+#     messages: List[str] = []
+#     canConnect: bool = False
+#     dockerVersion: str = "N/A"
+#     gpus: List[str] = []
+#     cache: List[str] = []
     
-    # callbacks
-    _onStart: Optional[Callable[[], None]] = None
-    _onProgress: Optional[Callable[[int], None]] = None
-    _onStop: Optional[Callable[[HostInformation], None]] = None
+#     # callbacks
+#     _onStart: Optional[Callable[[], None]] = None
+#     _onProgress: Optional[Callable[[int], None]] = None
+#     _onStop: Optional[Callable[[HostInformation], None]] = None
     
-    def setup(self, hostid: str):
-        super().setup(hostid=hostid)
-        self.hostid = hostid
+#     def setup(self, hostid: str):
+#         super().setup(hostid=hostid)
+#         self.hostid = hostid
        
-    def setOnStart(self, callback: Callable[[], None]):
-        self._onStart = callback
+#     def setOnStart(self, callback: Callable[[], None]):
+#         self._onStart = callback
         
-    def setOnProgress(self, callback: Callable[[int], None]):
-        self._onProgress = callback
+#     def setOnProgress(self, callback: Callable[[int], None]):
+#         self._onProgress = callback
         
-    def setOnStop(self, callback: Callable[[HostInformation], None]):
-        self._onStop = callback
+#     def setOnStop(self, callback: Callable[[HostInformation], None]):
+#         self._onStop = callback
        
-    def onStart(self):
-        # invoke callback if defined
-        if self._onStart:
-            self._onStart()
+#     def onStart(self):
+#         # invoke callback if defined
+#         if self._onStart:
+#             self._onStart()
        
-    def onProgress(self, progress: int):
-        # invoke callback if defined
-        if self._onProgress:
-            self._onProgress(progress)
+#     def onProgress(self, progress: int):
+#         # invoke callback if defined
+#         if self._onProgress:
+#             self._onProgress(progress)
        
-    def onStop(self):
+#     def onStop(self):
        
-        # compile host information
-        hostInfo = HostInformation(
-            name=self.hostid,
-            canConnect=self.canConnect,
-            testedOn=datetime.now(),
-            dockerVersion=self.dockerVersion,
-            gpus=self.gpus,
-            cachedSubjects=self.cache
-        )
+#         # compile host information
+#         hostInfo = HostInformation(
+#             name=self.hostid,
+#             canConnect=self.canConnect,
+#             testedOn=datetime.now(),
+#             dockerVersion=self.dockerVersion,
+#             gpus=self.gpus,
+#             cachedSubjects=self.cache
+#         )
         
-        # invoke callback if defined
-        if self._onStop:
-            self._onStop(hostInfo)
+#         # invoke callback if defined
+#         if self._onStop:
+#             self._onStop(hostInfo)
        
-    def work(self, hostid: str):
-        import subprocess
+#     def work(self, hostid: str):
+#         import subprocess
         
-        # try connection
-        if hostid == "localhost":
-            self.canConnect = True
-        else:
-            try:
-                subprocess.run(["ssh", hostid, "exit"], timeout=5, check=True)
-                self.canConnect = True
-            except Exception as e:
-                self.canConnect = False
-                self.messages.append(f"Failed to connect to host: {hostid}: {e}")
+#         # try connection
+#         if hostid == "localhost":
+#             self.canConnect = True
+#         else:
+#             try:
+#                 subprocess.run(["ssh", hostid, "exit"], timeout=5, check=True)
+#                 self.canConnect = True
+#             except Exception as e:
+#                 self.canConnect = False
+#                 self.messages.append(f"Failed to connect to host: {hostid}: {e}")
                 
-        # get docker version
-        if hostid == "localhost":
-            try:
-                result = subprocess.run(["docker", "--version"], timeout=5, check=True, capture_output=True)
-                self.dockerVersion = result.stdout.decode('utf-8')
-            except Exception as e:
-                self.dockerVersion = "E"
-                self.messages.append(f"Failed to get docker version: {e}")  
-        elif self.canConnect:        
-            try:
-                result = subprocess.run(["ssh", hostid, "docker --version"], timeout=5, check=True, capture_output=True)
-                self.dockerVersion = result.stdout.decode('utf-8')
-            except Exception as e:
-                self.dockerVersion = "E"
-                self.messages.append(f"Failed to get docker version: {e}")
+#         # get docker version
+#         if hostid == "localhost":
+#             try:
+#                 result = subprocess.run(["docker", "--version"], timeout=5, check=True, capture_output=True)
+#                 self.dockerVersion = result.stdout.decode('utf-8')
+#             except Exception as e:
+#                 self.dockerVersion = "E"
+#                 self.messages.append(f"Failed to get docker version: {e}")  
+#         elif self.canConnect:        
+#             try:
+#                 result = subprocess.run(["ssh", hostid, "docker --version"], timeout=5, check=True, capture_output=True)
+#                 self.dockerVersion = result.stdout.decode('utf-8')
+#             except Exception as e:
+#                 self.dockerVersion = "E"
+#                 self.messages.append(f"Failed to get docker version: {e}")
 
-        # get gpus list
-        if hostid == "localhost":
-            try:
-                result = subprocess.run(["nvidia-smi", "--list-gpus"], timeout=5, check=True, capture_output=True)
-                self.gpus = result.stdout.decode('utf-8').split("\n")
-            except Exception as e:
-                self.gpus = []
-                self.messages.append(f"Failed to get gpus: {e}")
-        elif self.canConnect:        
-            try:
-                result = subprocess.run(["ssh", hostid, "nvidia-smi", "--list-gpus"], timeout=5, check=True, capture_output=True)
-                self.gpus = result.stdout.decode('utf-8').split("\n")
-            except Exception as e:
-                self.gpus = []
-                self.messages.append(f"Failed to get gpus: {e}")
+#         # get gpus list
+#         if hostid == "localhost":
+#             try:
+#                 result = subprocess.run(["nvidia-smi", "--list-gpus"], timeout=5, check=True, capture_output=True)
+#                 self.gpus = result.stdout.decode('utf-8').split("\n")
+#             except Exception as e:
+#                 self.gpus = []
+#                 self.messages.append(f"Failed to get gpus: {e}")
+#         elif self.canConnect:        
+#             try:
+#                 result = subprocess.run(["ssh", hostid, "nvidia-smi", "--list-gpus"], timeout=5, check=True, capture_output=True)
+#                 self.gpus = result.stdout.decode('utf-8').split("\n")
+#             except Exception as e:
+#                 self.gpus = []
+#                 self.messages.append(f"Failed to get gpus: {e}")
 
-        # check cached subjects (directory names in /tmp/mhub_slicer_extension)
-        host_base = "/tmp/mhub_slicer_extension"
-        if hostid == "localhost": 
-            self.cache = os.listdir(host_base)
-        elif self.canConnect:
-            try: 
-                result = subprocess.run(["ssh", hostid, f"ls {host_base}"], timeout=5, check=True, capture_output=True)
-                self.cache = result.stdout.decode('utf-8').split("\n")
-            except Exception as e:
-                self.cache = []
-                self.messages.append(f"Failed to get cache: {e}")
+#         # check cached subjects (directory names in /tmp/mhub_slicer_extension)
+#         host_base = "/tmp/mhub_slicer_extension"
+#         if hostid == "localhost": 
+#             self.cache = os.listdir(host_base)
+#         elif self.canConnect:
+#             try: 
+#                 result = subprocess.run(["ssh", hostid, f"ls {host_base}"], timeout=5, check=True, capture_output=True)
+#                 self.cache = result.stdout.decode('utf-8').split("\n")
+#             except Exception as e:
+#                 self.cache = []
+#                 self.messages.append(f"Failed to get cache: {e}")
 
 class ProgressObserver:
     
@@ -1153,8 +1162,8 @@ class ProgressObserver:
     # _proc = None
     
     # # callbacks
-    # _onProgress: Optional[Callable[[int], None]] = None
-    # _onStop: Optional[Callable[[bool], None]] = None
+    # _onProgress: Optional[Callable[[int, str], None]] = None
+    # _onStop: Optional[Callable[[int, str, bool, bool], None]] = None
     
     # keep track of all running tasks
     _tasks: List['ProgressObserver'] = []
@@ -1172,8 +1181,8 @@ class ProgressObserver:
         self._seconds_elapsed = 0.0
         
         self._proc = None
-        self._onProgress: Optional[Callable[[float, Optional[str]], None]] = None
-        self._onStop: Optional[Callable[[bool, int], None]] = None
+        self._onProgress: Optional[Callable[[float, str], None]] = None
+        self._onStop: Optional[Callable[[int, str, bool, bool], None]] = None
         
         # initialize timer
         self._timer: qt.QTimer = qt.QTimer()
@@ -1216,22 +1225,21 @@ class ProgressObserver:
         # start timer
         self._timer.start()
 
-    def _stop(self, timedout: bool, killed: bool, returncode: int):
+    def _stop(self, returncode: int, timedout: bool, killed: bool):
         
         # cleanup (delete stdout file)
-        print("Remove temp file", self._stdout_file_name, os.path.exists(self._stdout_file_name))
-        os.remove(self._stdout_file_name)
+        print("read and remove temp stdout file", self._stdout_file_name, os.path.exists(self._stdout_file_name))
 
         # retrieve stdout
         with open(self._stdout_file_name, 'r', encoding='utf-8') as f:
             stdout = f.read()
 
+        # remove file
+        os.remove(self._stdout_file_name)
+
         # stop callback
         if self._onStop:
-            # TODO: include killed and re-arrange to returncode, timedout, killed
-            #       > Optional[Callable[[int, str, bool, bool], None]] = None
-            #       > self._onStop(returncode, stdout, timedout, killed)
-            self._onStop(timedout, returncode)
+            self._onStop(returncode, stdout, timedout, killed)
 
     def _onTimeout(self):
         assert self._proc is not None
@@ -1243,13 +1251,13 @@ class ProgressObserver:
         if self._timeout > 0 and self._seconds_elapsed > self._timeout:
             self._timer.stop()
             self._proc.kill()
-            self._stop(True, False, -1)
+            self._stop(-1, True, False)
         
         # stop timer if process is done
         if self._proc.poll() is not None:
             returncode = self._proc.returncode
             self._timer.stop()
-            self._stop(False, False, returncode)
+            self._stop(returncode, False, False)
                 
             return
 
@@ -1266,14 +1274,14 @@ class ProgressObserver:
             # call progress callback
             self._onProgress(self._seconds_elapsed, stdout)
 
-    def onStop(self, callback: Callable[[bool, int], None]):
+    def onStop(self, callback: Callable[[int, str, bool, bool], None]):
         self._onStop = callback
         
-    def onProgress(self, callback: Callable[[float, Optional[str]], None]):
+    def onProgress(self, callback: Callable[[float, str], None]):
         self._onProgress = callback
 
     def kill(self):
-        self._stop(False, True, -1)
+        self._stop(-1, False, True)
         self._timer.stop()
         if self._proc is not None:
             self._proc.kill()
@@ -1302,7 +1310,7 @@ class ProcessChain:
         self._seconds_elapsed = 0.0
         
         self._onStop: Optional[Callable[[bool], None]] = None
-        self._onProgress: Optional[Callable[['ProcessChain.CMD', int], None]] = None
+        self._onProgress: Optional[Callable[['ProcessChain.CMD', float], None]] = None
         
     def add(self, cmd: List[str], name: Optional[str] = None, timeout: int = 0, frequency: float = 2):
         assert not self.started, "Process chain already started"
@@ -1325,8 +1333,8 @@ class ProcessChain:
             if self._onStop:
                 self._onStop(True)
        
-    def _on_process_stop(self, timeout, returncode):
-        if timeout or returncode != 0:
+    def _on_process_stop(self, returncode: int, stdout: str, timedout: bool, killed: bool):
+        if timedout or killed or returncode != 0:
             self.success = False
             self.stopped = True
             
@@ -1336,7 +1344,7 @@ class ProcessChain:
         else:
             self._start_next()
         
-    def _on_process_progress(self, time):
+    def _on_process_progress(self, time: float, stdout: str):
         self._seconds_elapsed += time
         
         # invoke progress callback if defined
@@ -1351,7 +1359,7 @@ class ProcessChain:
     def onStop(self, callback: Callable[[bool], None]):
         self._onStop = callback
 
-    def onProgress(self, callback: Callable[['ProcessChain.CMD', int], None]):
+    def onProgress(self, callback: Callable[['ProcessChain.CMD', float], None]):
         self._onProgress = callback
 
 
@@ -1375,8 +1383,8 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         ScriptedLoadableModuleLogic.__init__(self)
         self.setupPythonRequirements()
         self._executables: Dict[str, str] = {}
-        self.hosts: List[str] = []
-        self.hostInfo: Dict[str, HostInformation] = {}
+        # self.hosts: List[str] = []
+        # self.hostInfo: Dict[str, HostInformation] = {}
 
         # load available hosts
         # self.getAvailableSshHosts()
@@ -1487,7 +1495,8 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             print("WARNING: ", "Docker executable not found.")
         
         # cache
-        self._executables["docker"] = docker_executable
+        if docker_executable:
+            self._executables["docker"] = docker_executable
         
         # deliver
         return docker_executable
@@ -1527,7 +1536,8 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             print("WARNING: ", "U-Docker executable not found.")
         
         # cache
-        self._executables["udocker"] = udocker_executable
+        if udocker_executable:
+            self._executables["udocker"] = udocker_executable
         
         # deliver
         return udocker_executable
@@ -1544,6 +1554,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         if name == "docker":
             try:
                 docker_exec = self.getDockerExecutable()
+                assert docker_exec is not None, "Docker executable not found"
                 print("running" , docker_exec, "--version")
                 result = subprocess.run([docker_exec, "--version"], timeout=5, check=True, capture_output=True)
                 bi.version = result.stdout.decode('utf-8')
@@ -1566,6 +1577,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
                 
                 # run
                 udocker_exec = self.getUDockerExecutable()
+                assert udocker_exec is not None, "Udocker executable not found"
                 print("running: ", udocker_exec, "--version")
                 result = subprocess.run([udocker_exec, "--version"], timeout=5, check=True, capture_output=True)
                 print("result: ", result.stdout.decode('utf-8'))
@@ -1635,12 +1647,14 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         try:
             if backend == "docker":
                 docker_exec = self.getDockerExecutable()
+                assert docker_exec is not None, "Docker executable not found"
                 result = subprocess.run([docker_exec, "images", "--filter", "reference=mhubai/*", "--format", "{{.Repository}}|{{.Tag}}|{{.Size}}"], timeout=5, check=True, capture_output=True)
                 images = [i.split("|") for i in result.stdout.decode('utf-8').split("\n")]
                 images = [f"{i[0]}:latest ({i[2]})" for i in images if len(i) == 3 and i[1] == "latest"]
                 
             elif backend == "udocker":
                 udocker_exec = self.getUDockerExecutable()
+                assert udocker_exec is not None, "Udocker executable not found"
                 result = subprocess.run([udocker_exec, "images"], timeout=5, check=True, capture_output=True)
                 images = result.stdout.decode('utf-8').split("\n")
                 images = [image.split()[0] for image in images if image.startswith("mhubai/")]
@@ -1659,7 +1673,6 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         # return
         return images
         
-        
     def get_node_paths(self, node) -> List[str]:
         storageNode=node.GetStorageNode()
         if storageNode is not None:
@@ -1668,51 +1681,51 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             instanceUIDs=node.GetAttribute('DICOM.instanceUIDs').split()
             return [slicer.dicomDatabase.fileForInstance(instanceUID) for instanceUID in instanceUIDs]
 
-    def upload_file(self, hostid: str, local_file: str, remote_file: str):
+    # def upload_file(self, hostid: str, local_file: str, remote_file: str):
         
-        # make sure host_input_dir exists / create dir under tmp
-        cmd = ["ssh", hostid, "mkdir", "-p", os.path.dirname(remote_file)]
-        proc = slicer.util.launchConsoleProcess(cmd)
-        slicer.util.logProcessOutput(proc)
+    #     # make sure host_input_dir exists / create dir under tmp
+    #     cmd = ["ssh", hostid, "mkdir", "-p", os.path.dirname(remote_file)]
+    #     proc = slicer.util.launchConsoleProcess(cmd)
+    #     slicer.util.logProcessOutput(proc)
         
-        # upload the files to host
-        cmd = ["scp", local_file, f"{hostid}:{remote_file}"]
-        p = ProgressObserver(cmd, timeout=0)
-        p.onStop(lambda t, rc: print(f"File upload done: {t}, {rc}"))
+    #     # upload the files to host
+    #     cmd = ["scp", local_file, f"{hostid}:{remote_file}"]
+    #     p = ProgressObserver(cmd, timeout=0)
+    #     p.onStop(lambda t, rc: print(f"File upload done: {t}, {rc}"))
 
-    def zip_node(self, node, zip_file: str, verbose: bool = True):
-        """
-        Create a zip file from a dicom image node at the specified location.
-        """
-        import zipfile
+    # def zip_node(self, node, zip_file: str, verbose: bool = True):
+    #     """
+    #     Create a zip file from a dicom image node at the specified location.
+    #     """
+    #     import zipfile
         
-        # get list of all dicom files
-        files = self.get_node_paths(node)
+    #     # get list of all dicom files
+    #     files = self.get_node_paths(node)
      
-        # print number of files
-        if verbose: print(f"number of files: {len(files)}")
+    #     # print number of files
+    #     if verbose: print(f"number of files: {len(files)}")
         
-        # check if the zip file exists
-        if os.path.exists(zip_file):
-            raise Exception(f"Zip file already exists: {zip_file}")
+    #     # check if the zip file exists
+    #     if os.path.exists(zip_file):
+    #         raise Exception(f"Zip file already exists: {zip_file}")
         
-        # check if the path exists 
-        if not os.path.exists(os.path.dirname(zip_file)):
-            os.makedirs(os.path.dirname(zip_file))
+    #     # check if the path exists 
+    #     if not os.path.exists(os.path.dirname(zip_file)):
+    #         os.makedirs(os.path.dirname(zip_file))
 
-        # make zip file under local input dir and add all files to it
-        if verbose: print(f"creating zip file {zip_file}")
-        with zipfile.ZipFile(zip_file, 'w') as zipMe:        
-            for file in files:
+    #     # make zip file under local input dir and add all files to it
+    #     if verbose: print(f"creating zip file {zip_file}")
+    #     with zipfile.ZipFile(zip_file, 'w') as zipMe:        
+    #         for file in files:
                 
-                # print
-                if verbose: print(f"adding file {file} to zip file")
+    #             # print
+    #             if verbose: print(f"adding file {file} to zip file")
                 
-                # compress the file
-                zipMe.write(file, os.path.basename(file), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+    #             # compress the file
+    #             zipMe.write(file, os.path.basename(file), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
                 
-                # let slicer breathe :D
-                slicer.app.processEvents()
+    #             # let slicer breathe :D
+    #             slicer.app.processEvents()
 
     def copy_node(self, node, copy_dir: str, verbose: bool = True):
         """
@@ -1738,7 +1751,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             # let slicer breathe :D
             slicer.app.processEvents()
        
-    def _run_mhub_docker(self, model: str, gpus: Optional[List[int]], input_dir: str, output_dir: str, onProgress: Callable[[float, Optional[str]], None], onStop: Callable, timeout: int = 600):
+    def _run_mhub_docker(self, model: str, gpus: Optional[List[int]], input_dir: str, output_dir: str, onProgress: Callable[[float, str], None], onStop: Callable[[int, str, bool, bool], None], timeout: int = 600):
         
         # gpus command
         if gpus is None:
@@ -1764,28 +1777,28 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         ]
         
         # callback wrapper
-        def _on_stop(success: bool, returncode: int):
-            print(f"Command chain stopped with success: {success}")
-            onStop()
+        def _on_stop(returncode: int, stdout: str, timedout: bool, killed: bool):
+            print(f"Command chain stopped with return code {returncode}. Timedout [{timedout}] Killed [{killed}]")
+            onStop(returncode, stdout, timedout, killed)
         
         # run async
         po = ProgressObserver(run_cmd, frequency=2, timeout=timeout)
         po.onStop(_on_stop)
         po.onProgress(onProgress)
 
-    def _run_mhub_udocker(self, model: str, gpu: bool, input_dir: str, output_dir: str, onProgress: Callable[[float], None], onStop: Callable, timeout: int = 600):
+    def _run_mhub_udocker(self, model: str, gpu: bool, input_dir: str, output_dir: str, onProgress: Callable[[float, str], None], onStop: Callable[[int, str, bool, bool], None], timeout: int = 600):
         
         # get executable
         udocker_exec = self.getUDockerExecutable()
         
         # callback wrapper
-        def _on_progress(cmd: ProcessChain.CMD, time: int):
+        def _on_progress(cmd: ProcessChain.CMD, time: float):
             #print(f"Command {cmd.name} running {time} seconds")
-            onProgress(float(time))
+            onProgress(float(time), "")
             
         def _on_stop(success: bool):
             print(f"Command chain stopped with success: {success}")
-            onStop()
+            onStop(int(success), "", False, False)
         
         # initialize async processing chain
         pc = ProcessChain()
@@ -1845,18 +1858,18 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
                  gpus: Optional[List[int]], 
                  input_dir: str, 
                  output_dir: str, 
-                 onProgress: Optional[Callable[[float, Optional[str]], None]] = None,
-                 onStop: Optional[Callable] = None, 
+                 onProgress: Optional[Callable[[float, str], None]] = None,
+                 onStop: Optional[Callable[[int, str, bool, bool], None]] = None, 
                  timeout: int = 600):
                 
         # define callbacks
-        def _on_progress(time: float, stdout: Optional[str]):
+        def _on_progress(time: float, stdout: str):
             
             # invoke onProgress callback
             if onProgress is not None and callable(onProgress): 
                 onProgress(time, stdout)
                 
-        def _on_stop():
+        def _on_stop(returncode: int, stdout: str, timedout: bool, killed: bool):
         
             # import segmentations
             dsegfiles = self.scanDirectoryForFilesWithExtension(output_dir)
@@ -1865,7 +1878,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         
             # invoke onStop callback
             if onStop is not None and callable(onStop): 
-                onStop()
+                onStop(returncode, stdout, timedout, killed)
         
         # run backend
         if backend == "docker":
@@ -1874,7 +1887,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             self._run_mhub_udocker(model, gpus is not None, input_dir, output_dir, _on_progress, _on_stop, timeout)
 
 
-    def remove_image(self, image_name, on_stop = None, timeout: int = 0):
+    def remove_image(self, image_name, on_stop: Optional[Callable[[int, str, bool, bool], None]] = None, timeout: int = 0):
         
         # get docker executable
         docker_exec = self.getDockerExecutable()
@@ -1886,7 +1899,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         po = ProgressObserver(cmd, frequency=2, timeout=timeout)
         if on_stop: po.onStop(on_stop)
 
-    def update_image(self, image_name, on_stop = None, timeout: int = 0):
+    def update_image(self, image_name, on_stop: Optional[Callable[[int, str, bool, bool], None]] = None, timeout: int = 0):
         
         # get docker executable
         docker_exec = self.getDockerExecutable()
@@ -1899,7 +1912,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         if on_stop: po.onStop(on_stop)
         
         # log output (DEBUG ONLY)
-        def onProgress(t, stdout):
+        def onProgress(t: float, stdout: str):
             print(f">> __pull image ({t})__")
             for line in stdout.split("\n"):
                 print(f">> {line}")
