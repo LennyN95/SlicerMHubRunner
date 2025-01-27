@@ -20,7 +20,10 @@
       <item row="0" column="1">
        <widget class="ctkSearchBox" name="searchModel"/>
       </item>
-      <item row="4" column="1">
+      <item row="3" column="1">
+       <widget class="QTableWidget" name="tblModelList"/>
+      </item>
+      <item row="5" column="1">
        <widget class="QLabel" name="lblModelPage">
         <property name="text">
          <string>ModelPage N/A</string>
@@ -36,9 +39,6 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
-       <widget class="QTableWidget" name="tblModelList"/>
-      </item>
      </layout>
     </widget>
    </item>
@@ -48,45 +48,55 @@
       <string>Input Image</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
-      <item row="0" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_5">
-        <item>
-         <widget class="qMRMLNodeComboBox" name="inputSelector">
-          <property name="toolTip">
-           <string>Pick the input to the algorithm.</string>
-          </property>
-          <property name="nodeTypes">
-           <stringlist notr="true">
-            <string>vtkMRMLScalarVolumeNode</string>
-           </stringlist>
-          </property>
-          <property name="showChildNodeTypes">
-           <bool>false</bool>
-          </property>
-          <property name="addEnabled">
-           <bool>false</bool>
-          </property>
-          <property name="removeEnabled">
-           <bool>false</bool>
-          </property>
-          <property name="SlicerParameterName" stdset="0">
-           <string>inputVolume</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="cmdOpenSelectedNode">
-          <property name="text">
-           <string>Open</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="horizontalLayout_5"/>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>Input volume:</string>
+      <item row="1" column="1">
+       <widget class="qMRMLNodeComboBox" name="inputSelector">
+        <property name="toolTip">
+         <string>Pick the input to the algorithm.</string>
+        </property>
+        <property name="nodeTypes">
+         <stringlist notr="true">
+          <string>vtkMRMLScalarVolumeNode</string>
+         </stringlist>
+        </property>
+        <property name="showChildNodeTypes">
+         <bool>false</bool>
+        </property>
+        <property name="addEnabled">
+         <bool>false</bool>
+        </property>
+        <property name="removeEnabled">
+         <bool>false</bool>
+        </property>
+        <property name="SlicerParameterName" stdset="0">
+         <string>inputVolume</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="qMRMLSubjectHierarchyTreeView" name="SubjectHierarchyTreeView">
+        <property name="levelFilter">
+         <stringlist notr="true"/>
+        </property>
+        <property name="nodeTypes">
+         <stringlist notr="true"/>
+        </property>
+        <property name="hideChildNodeTypes">
+         <stringlist notr="true"/>
+        </property>
+        <property name="includeItemAttributeNamesFilter">
+         <stringlist notr="true"/>
+        </property>
+        <property name="includeNodeAttributeNamesFilter">
+         <stringlist notr="true"/>
+        </property>
+        <property name="excludeItemAttributeNamesFilter">
+         <stringlist notr="true"/>
+        </property>
+        <property name="excludeNodeAttributeNamesFilter">
+         <stringlist notr="true"/>
         </property>
        </widget>
       </item>
@@ -535,6 +545,11 @@
    <extends>QWidget</extends>
    <header>qMRMLWidget.h</header>
    <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLSubjectHierarchyTreeView</class>
+   <extends>QTreeView</extends>
+   <header>qMRMLSubjectHierarchyTreeView.h</header>
   </customwidget>
  </customwidgets>
  <resources/>

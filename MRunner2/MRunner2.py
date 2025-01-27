@@ -201,6 +201,11 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.cmdDetectDockerExecutable.connect('clicked(bool)', self.onAutoDetectDockerExecutable)
         self.ui.cmdDetectUDockerExecutable.connect('clicked(bool)', self.onAutoDetectUDockerExecutable)
 
+        # setup SubjectHierarchyTreeView
+        # -> https://apidocs.slicer.org/v4.8/classqMRMLSubjectHierarchyTreeView.html#a3214047490b8efd11dc9abf59c646495
+        self.ui.SubjectHierarchyTreeView.setMRMLScene(slicer.mrmlScene)
+        self.ui.SubjectHierarchyTreeView.connect('currentItemChanged(vtkIdType)', self.onSubjectHierarchyTreeViewCurrentItemChanged)
+
         # input node
         # self.ui.inputSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onInputNodeSelect)
 
@@ -303,6 +308,34 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self._checkCanApply)
             self._checkCanApply()
 
+
+    def onSubjectHierarchyTreeViewCurrentItemChanged(self, itemId: int) -> None:
+        
+        # get subject hierarchy node
+        shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
+
+        # print debug
+        print("SubjectHierarchyTreeView currentItemChanged: ", itemId, shNode.GetItemName(itemId))
+
+        # get the volume node
+        volumeNode = shNode.GetItemDataNode(itemId)
+
+        # update the (old) input selector based on selection
+        if volumeNode:
+            self.ui.inputSelector.setCurrentNode(volumeNode)
+            self._checkCanApply()
+            
+        # --- multi selection: 
+            
+        # make vtkIdList
+        items = vtk.vtkIdList()
+            
+        # multi selection
+        self.ui.SubjectHierarchyTreeView.currentItems(items)
+
+        # print all selected items
+        for i in range(items.GetNumberOfIds()):
+            print("Selected item: ", shNode.GetItemName(items.GetId(i)))
 
     def onUpdateDockerExecutable(self, path) -> None:
         # user enters a new path for the docker executable manually
