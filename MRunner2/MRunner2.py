@@ -499,8 +499,8 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             def create_pull_handler(btnPull, model):
                 return lambda: self.onModelPull(btnPull, model)
 
-            def create_run_handler(btnRun, model):
-                return lambda: self.onModelRun(btnRun, model)
+            # def create_run_handler(btnRun, model):
+            #     return lambda: self.onModelRun(btnRun, model)
 
             def create_details_handler(model):
                 return lambda: self.onModelDetails(model)
@@ -904,10 +904,18 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 input_dir
             )
             
-            # update apply button elapsed time
-            def onProgress(progress: float):
-                self.ui.applyButton.text = f"Running {model.label} ({progress}s)"
+            # clear logs
+            self.ui.txtLogs.clear()
             
+            # update apply button elapsed time
+            def onProgress(progress: float, stdout: Optional[str]):
+                self.ui.applyButton.text = f"Running {model.label} ({progress}s)"
+                
+                
+                # display stdout in txtLogs
+                if stdout is not None and stdout.strip() != "":
+                    self.ui.txtLogs.appendPlainText(stdout)
+                                
             #
             self.logic.run_mhub(
                 model=model.name,
@@ -1199,9 +1207,10 @@ class ProgressObserver:
         # run command
         self._proc = subprocess.Popen(
             cmd, 
-            stdout=open(self._stdout_file_name, 'w'), 
+            stdout=open(self._stdout_file_name, 'w', encoding='utf-8'), 
             stderr=subprocess.PIPE,
-            text=True
+            text=True,
+            encoding='utf-8'
         )
         
         # start timer
@@ -1211,11 +1220,17 @@ class ProgressObserver:
         
         # cleanup (delete stdout file)
         print("Remove temp file", self._stdout_file_name, os.path.exists(self._stdout_file_name))
-        #os.remove(self._stdout_file_name)
+        os.remove(self._stdout_file_name)
+
+        # retrieve stdout
+        with open(self._stdout_file_name, 'r', encoding='utf-8') as f:
+            stdout = f.read()
 
         # stop callback
-        # TODO: include killed and re-arrange to returncode, timedout, killed
         if self._onStop:
+            # TODO: include killed and re-arrange to returncode, timedout, killed
+            #       > Optional[Callable[[int, str, bool, bool], None]] = None
+            #       > self._onStop(returncode, stdout, timedout, killed)
             self._onStop(timedout, returncode)
 
     def _onTimeout(self):
@@ -1243,7 +1258,7 @@ class ProgressObserver:
             # self._proc.stdout.read().decode('utf-8') # <--- carful, can block, only when needed and do experiment        
             
             # fetch the latest process stdout from file
-            with open(self._stdout_file_name, 'r') as f:
+            with open(self._stdout_file_name, 'r', encoding='utf-8') as f:
                 f.seek(self._stdout_readpointer)
                 stdout = f.read()
                 self._stdout_readpointer = f.tell()
@@ -1723,7 +1738,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             # let slicer breathe :D
             slicer.app.processEvents()
        
-    def _run_mhub_docker(self, model: str, gpus: Optional[List[int]], input_dir: str, output_dir: str, onProgress: Callable[[float], None], onStop: Callable, timeout: int = 600):
+    def _run_mhub_docker(self, model: str, gpus: Optional[List[int]], input_dir: str, output_dir: str, onProgress: Callable[[float, Optional[str]], None], onStop: Callable, timeout: int = 600):
         
         # gpus command
         if gpus is None:
@@ -1742,7 +1757,10 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         ] + mhub_run_gpus + [
             "-v", f"{input_dir}:/app/data/input_data:ro",
             "-v", f"{output_dir}:/app/data/output_data:rw",
-            f"mhubai/{model}:latest"
+            f"mhubai/{model}:latest",
+            "--workflow",
+            "default",
+            "--print"
         ]
         
         # callback wrapper
@@ -1827,16 +1845,16 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
                  gpus: Optional[List[int]], 
                  input_dir: str, 
                  output_dir: str, 
-                 onProgress: Optional[Callable[[float], None]] = None,
+                 onProgress: Optional[Callable[[float, Optional[str]], None]] = None,
                  onStop: Optional[Callable] = None, 
                  timeout: int = 600):
                 
         # define callbacks
-        def _on_progress(time: float):
+        def _on_progress(time: float, stdout: Optional[str]):
             
             # invoke onProgress callback
             if onProgress is not None and callable(onProgress): 
-                onProgress(time)
+                onProgress(time, stdout)
                 
         def _on_stop():
         
@@ -1880,11 +1898,12 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         po = ProgressObserver(cmd, frequency=2, timeout=timeout)
         if on_stop: po.onStop(on_stop)
         
-        # log output 
+        # log output (DEBUG ONLY)
         def onProgress(t, stdout):
-            print(f"------- update image stdout ({t}) --------")
-            print(stdout)
-            print()
+            print(f">> __pull image ({t})__")
+            for line in stdout.split("\n"):
+                print(f">> {line}")
+                        
         po.onProgress(onProgress)
         
 
