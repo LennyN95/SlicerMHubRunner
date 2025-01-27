@@ -473,6 +473,16 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             btnPull = qt.QPushButton("Pull")
             btnPull.clicked.connect(create_pull_handler(btnPull, model))
             layout.addWidget(btnPull)
+            
+            # disable pull button if image is available locally
+            images = self.logic.getLocalImages("docker", cached=True)
+            images = [i.split()[0] for i in images]
+            model_image_name = f"mhubai/{model.name}:latest"
+            print(images, model_image_name)
+            if model_image_name in images:
+                btnPull.enabled = False
+                btnPull.text = "Pulled"
+                btnPull.toolTip = "Image is available locally"
 
             # btnRun = qt.QPushButton("Run")
             # btnRun.clicked.connect(create_run_handler(btnRun, model))
@@ -541,9 +551,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         assert self.logic is not None
         
         # disable button and block table selection signals temporarily
-        #self.ui.tblModelList.blockSignals(True)
         button.enabled = False
-        #self.ui.tblModelList.blockSignals(False)
         
         # set button text to pulling
         button.text = "Pulling..."
@@ -554,16 +562,17 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # debug
         print("Pulling image: ", image_name)
         
-        # # on stop handler
-        # def on_stop(*args):
-        #     button.enabled = True
-        #     self.updateBackendImagesList()
+        # on stop handler
+        def on_stop(*args):
+            # button.enabled = True
+            button.text = "Pulled" # <-- NOTE: optimistic update
+            self.updateBackendImagesList()
             
-        #     # debug
-        #     print(f"Image {image_name} pulled, args: {args}")
+            # debug
+            print(f"Image {image_name} pulled, args: {args}")
         
-        # # pull model
-        # self.logic.update_image(image_name, on_stop=on_stop)
+        # pull model
+        self.logic.update_image(image_name, on_stop=on_stop)
            
     def onModelLoadTest(self, model: str) -> None:
         
@@ -742,7 +751,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         backend = self.ui.backendSelector.currentText
         
         # get available images
-        images = self.logic.getLocalImages(backend)
+        images = self.logic.getLocalImages(backend, cached=False)
         
         # update list
         self.ui.lstBackendImages.clear()
@@ -1523,11 +1532,16 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         # return
         return gpus
 
-    def getLocalImages(self, backend: str) -> List[str]:
+    def getLocalImages(self, backend: str, cached: bool = True) -> List[str]:
         
         # get images
         import subprocess
         
+        # cache
+        if cached and hasattr(self, "_images_cache") and backend in self._images_cache:
+            return self._images_cache[backend]
+        
+        # load images based on backend
         try:
             if backend == "docker":
                 docker_exec = self.getDockerExecutable()
@@ -1546,6 +1560,11 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             
         except Exception as e:
             images = []
+            
+        # cache
+        if not hasattr(self, "_images_cache"):
+            self._images_cache = {}
+        self._images_cache[backend] = images
             
         # return
         return images
@@ -1685,7 +1704,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             print("udocker with gpu")
             
             # check if image is already available or optionally pull image
-            images = self.getLocalImages("udocker")
+            images = self.getLocalImages("udocker", cached=True)
             print(images)
             if f"mhubai/{model}:latest" not in images:
                 pull_cmd = [udocker_exec, "pull", f"mhubai/{model}:latest"]
