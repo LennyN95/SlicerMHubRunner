@@ -170,16 +170,67 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.addObserver(slicer.mrmlScene, slicer.mrmlScene.EndCloseEvent, self.onSceneEndClose)
 
         # Buttons
-        self.ui.cmdTestHost.connect('clicked(bool)', self.onTestHostButton)
         self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
         self.ui.cmdKillObservedProcesses.connect('clicked(bool)', self.onKillObservedProcessesButton)
+        self.ui.cmdBackendReload.connect('clicked(bool)', self.onBackendUpdate)
+        self.ui.cmdInstallUdocker.connect('clicked(bool)', self.logic.installUdockerBackend)
+        self.ui.cmdInstallUdocker.enabled = False
+        # self.ui.cmdTest.connect('clicked(bool)', self.importSegmentations)
+        self.ui.cmdReloadHostGpus.connect('clicked(bool)', self.updateHostGpuList)
+        self.ui.chkGpuEnabled.connect('clicked(bool)', self.onGpuEnabled)
+        self.ui.lstBackendImages.connect('itemSelectionChanged()', self.onBackendImageSelect)
+        self.ui.cmdImageUpdate.connect('clicked(bool)', self.onBackendImageUpdate)
+        self.ui.cmdImageRemove.connect('clicked(bool)', self.onBackendImageRemove)
+                
+        # search box "searchModel" and model list "lstModelList"
+        self.ui.searchModel.textChanged.connect(self.onSearchModel)
+        #self.ui.lstModelList.connect('itemSelectionChanged()', self.onModelSelect)
+        self.ui.tblModelList.connect('cellClicked(int, int)', self.onModelSelectFromTable)
+        self.onSearchModel("")
+                
+        # Dropdowns
+        self.ui.backendSelector.addItems(["docker", "udocker"])
+        self.ui.backendSelector.connect('currentIndexChanged(int)', self.onBackendSelect)
 
-        # Dorpdowns (hosts)
-        self.ui.hostSelector.addItems(["localhost"] + self.logic.hosts)
-        self.ui.hostSelector.connect('currentIndexChanged(int)', self.onHostSelect)
+        # executable paths
+        self.ui.pthDockerExecutable.currentPath = self.logic.getDockerExecutable()
+        self.ui.pthUDockerExecutable.currentPath = self.logic.getUDockerExecutable()
+        self.ui.pthDockerExecutable.connect('currentPathChanged(QString)', self.onUpdateDockerExecutable)
+        self.ui.pthUDockerExecutable.connect('currentPathChanged(QString)', self.onUpdateUDockerExecutable)
+        self.ui.cmdDetectDockerExecutable.connect('clicked(bool)', self.onAutoDetectDockerExecutable)
+        self.ui.cmdDetectUDockerExecutable.connect('clicked(bool)', self.onAutoDetectUDockerExecutable)
+
+        # input node
+        # self.ui.inputSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onInputNodeSelect)
+
+        # load model repo
+        # self.ui.modelSelector.connect('currentIndexChanged(int)', self.onModelSelect)
+        # models = self.logic.getModels()
+        # self.ui.modelSelector.clear()
+        # for model in models:
+        #     self.ui.modelSelector.addItem(model)
+
+        # load gpus
+        self.updateHostGpuList()
+            
+        # load backends
+        self.onBackendSelect(0)
 
         # Make sure parameter node is initialized (needed for module reload)
         self.initializeParameterNode()
+        
+        # print path
+        import sys
+        print(sys.path)
+        
+        # run which python and which pip 
+        import subprocess
+        print(subprocess.run(["which", "python3"], capture_output=True).stdout.decode('utf-8'))
+        print(subprocess.run(["which", "udocker"], capture_output=True).stdout.decode('utf-8'))
+        
+        # try the same with slicer.utils.consoleProcess
+        p = slicer.util.launchConsoleProcess(["which", "python3"])
+        print(p.stdout.read())
 
     def cleanup(self) -> None:
         """
@@ -251,7 +302,57 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.addObserver(self._parameterNode, vtk.vtkCommand.ModifiedEvent, self._checkCanApply)
             self._checkCanApply()
 
+
+    def onUpdateDockerExecutable(self, path) -> None:
+        # user enters a new path for the docker executable manually
+        
+        # get docker executable
+        docker_executable = self.ui.pthDockerExecutable.currentPath
+        
+        # set docker executable
+        print("---docker_executable-->", docker_executable, path)
+        self.logic._executables["docker"] = docker_executable
+    
+    def onAutoDetectDockerExecutable(self) -> None:
+        # user clicks on the detect button
+        
+        # get docker executable
+        docker_executable = self.logic.getDockerExecutable(refresh=True)
+        
+        # set docker executable
+        self.ui.pthDockerExecutable.currentPath = docker_executable
+        
+    def onUpdateUDockerExecutable(self, path) -> None:
+        # user enters a new path for the udocker executable manually
+        
+        # get udocker executable
+        udocker_executable = self.ui.pthUDockerExecutable.currentPath
+        
+        # set udocker executable
+        print("---udocker_executable-->", udocker_executable, path)
+        self.logic._executables["udocker"] = udocker_executable
+        
+    def onAutoDetectUDockerExecutable(self) -> None:
+        # user clicks on the detect button
+        
+        # get udocker executable
+        udocker_executable = self.logic.getUDockerExecutable(refresh=True)
+        
+        # set udocker executable
+        self.ui.pthUDockerExecutable.currentPath = udocker_executable
+
     def _checkCanApply(self, caller=None, event=None) -> None:
+        
+        # check if model is selected
+        # TODO: ...
+        
+        # check if backend is selected / available
+        # TODO: ...
+        
+        # chekc if gpu requirements are met
+        # TODO: ...
+                
+        # check if input is selected
         if self._parameterNode and self._parameterNode.inputVolume:
             self.ui.applyButton.toolTip = _("Compute output volume")
             self.ui.applyButton.enabled = True
@@ -268,52 +369,310 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for task in ProgressObserver._tasks:
             task.kill()
 
-    def onHostSelect(self, index: int) -> None:
+    def updateHostGpuList(self) -> None:
         assert self.logic is not None
         
-        # update host information
-        self.updateHostInfo()
+        gpus = self.logic.getGPUInformation()
+        for gpu in gpus:
+            self.ui.lstHostGpu.addItem(gpu)
+        self.ui.chkGpuEnabled.checked = len(gpus) > 0
+        self.ui.chkGpuEnabled.enabled = len(gpus) > 0
+
+    def onGpuEnabled(self) -> None:
         
-        # get selected host id
-        hostid = self.ui.hostSelector.currentText
+        # enable/disable gpus
+        enabled = self.ui.chkGpuEnabled.checked
+        self.ui.lstHostGpu.enabled = enabled
         
-        # if host is not yet tested, test it
-        if hostid not in self.logic.hostInfo:
-            self.initiateHostTest()
-           
-    def updateHostInfo(self) -> None:
-        assert self.logic is not None
+        # enable/disable apply button
+        self._checkCanApply()
+
+    def loadModelRepo(self) -> None:
+        pass
+    
+    def onSearchModel(self, text: str) -> None:
+        print("Search model: ", text)
         
-        # get selected host id
-        hostid = self.ui.hostSelector.currentText
-        
-        # get host information
-        hinfo = self.logic.hostInfo[hostid] if hostid in self.logic.hostInfo else None
-        
-        # update can connect status
-        if hinfo is None:
-            self.ui.lblHostConnectionStatus.setText("N/A")
-        elif hinfo.canConnect:
-            self.ui.lblHostConnectionStatus.setText("OK")
-        else:
-            self.ui.lblHostConnectionStatus.setText("Failed")
+        # TODO: proper caching
+        # load models
+        if not hasattr(self, "_model_cache"):
+            self._model_cache = self.logic.getModels()
             
-        # update docker version
-        if hinfo is None:
-            self.ui.lblHostDockerVersion.setText("N/A")
-        else:
-            self.ui.lblHostDockerVersion.setText(hinfo.dockerVersion)
+        # filter models
+        models = [model for model in self._model_cache if text.lower() in model.lower()]
         
-        # update gpus list
-        self.ui.lstHostGpu.clear()
-        if hinfo is not None:
-            for gpu in hinfo.gpus:
-                if gpu == "": continue
-                item = qt.QListWidgetItem()
-                item.setFlags(item.flags() | qt.Qt.ItemIsUserCheckable)
-                item.setCheckState(qt.Qt.Unchecked)
-                item.setText(gpu)
-                self.ui.lstHostGpu.addItem(item) 
+        # update model list
+        # self.ui.lstModelList.clear()
+        # for model in models:
+        #     self.ui.lstModelList.addItem(model)
+            
+        # set table height to 10 rows
+        self.ui.tblModelList.setRowCount(10)
+                    
+        # remove all rows from model table
+        self.ui.tblModelList.setRowCount(0)
+
+        # add models to table with 3 columns
+        self.ui.tblModelList.setColumnCount(4)
+        self.ui.tblModelList.setHorizontalHeaderLabels(["Model", "Type", "Image", "Actions"])
+
+        # make table rows slim
+        self.ui.tblModelList.verticalHeader().setDefaultSectionSize(20)
+        
+        # make table columns use all available space
+        self.ui.tblModelList.horizontalHeader().setStretchLastSection(True)
+        
+        # fill table with models that match the search text
+        for model in models:
+            rowPosition = self.ui.tblModelList.rowCount
+            self.ui.tblModelList.insertRow(rowPosition)
+            
+            # add model name
+            self.ui.tblModelList.setItem(rowPosition, 0, qt.QTableWidgetItem(model))
+            
+            # add model type (placeholder)
+            self.ui.tblModelList.setItem(rowPosition, 1, qt.QTableWidgetItem("type"))
+            
+            # add model image (placeholder) 
+            self.ui.tblModelList.setItem(rowPosition, 2, qt.QTableWidgetItem("image"))
+            
+            # create horizontal layout, add pull, run, and details buttons, and set layout to cell
+            layout = qt.QHBoxLayout()
+            layout.setSpacing(0)
+            layout.setContentsMargins(0,0,0,0)
+            
+            # Create function that creates a new scope for each button
+            def create_pull_handler(btnPull, model):
+                return lambda: self.onModelPull(btnPull, model)
+
+            def create_run_handler(btnRun, model):
+                return lambda: self.onModelRun(btnRun, model)
+
+            def create_details_handler(model):
+                return lambda: self.onModelDetails(model)
+            
+            def create_web_handler(model):
+                return lambda: self.onModelWeb(model)
+
+            btnPull = qt.QPushButton("Pull")
+            btnPull.clicked.connect(create_pull_handler(btnPull, model))
+            layout.addWidget(btnPull)
+
+            btnRun = qt.QPushButton("Run")
+            btnRun.clicked.connect(create_run_handler(btnRun, model))
+            layout.addWidget(btnRun)
+
+            btnDetails = qt.QPushButton("Details")
+            btnDetails.clicked.connect(create_details_handler(model))
+            layout.addWidget(btnDetails)
+
+            btnWeb = qt.QPushButton("Web")
+            btnWeb.clicked.connect(create_web_handler(model))
+            layout.addWidget(btnWeb)
+            
+            widget = qt.QWidget()
+            widget.setLayout(layout)
+            self.ui.tblModelList.setCellWidget(rowPosition, 3, widget)
+            
+    def onModelWeb(self, model: str) -> None:
+        
+        # open model in web
+        url = "https://mhub.ai/models/" + model
+        slicer.util.openUrlInDefaultWebBrowser(url)    
+        
+    def onModelPull(self, button: qt.QPushButton, model_name: str) -> None:
+        assert self.logic is not None
+        
+        # disable button and block table selection signals temporarily
+        self.ui.tblModelList.blockSignals(True)
+        button.enabled = False
+        self.ui.tblModelList.blockSignals(False)
+        
+        # construct image name
+        image_name = f"mhubai/{model_name}:latest"
+        
+        # debug
+        print("Pulling image: ", image_name)
+        
+        # # on stop handler
+        # def on_stop(*args):
+        #     button.enabled = True
+        #     self.updateBackendImagesList()
+            
+        #     # debug
+        #     print(f"Image {image_name} pulled, args: {args}")
+        
+        # # pull model
+        # self.logic.update_image(image_name, on_stop=on_stop)
+            
+
+    def onModelSelect(self, index: int) -> None:
+        
+        # debug
+        print("Model selected: ", index)
+        
+        # get model name
+        model_name = self.ui.modelSelector.currentText
+        
+        # update model page
+        url = "https://mhub.ai/models/" + model_name
+        self.ui.lblModelPage.text = f'<a href="{url}">{url}</a>'
+        
+    def onModelSelectFromTable(self, row: int, col: int) -> None:
+        
+        # get model name
+        model_name = self.ui.tblModelList.item(row, 0).text()
+
+        # debug
+        print("Model selected: ", row, col, model_name)
+        
+        # update model page
+        url = "https://mhub.ai/models/" + model_name
+        self.ui.lblModelPage.text = f'<a href="{url}">{url}</a>'
+
+    def onBackendSelect(self, index: int) -> None:
+        self.onBackendUpdate()
+        
+    def onBackendUpdate(self) -> None:
+        assert self.logic is not None
+        
+        # get selected backend
+        backend = self.ui.backendSelector.currentText
+        
+        # get backend information
+        bi = self.logic.getBackendInformation(backend)
+        
+        # get host version
+        if not bi.available:
+            self.ui.lblBackendVersion.setText("Selected backend not available.")
+            
+        else:
+            self.ui.lblBackendVersion.setText(bi.version)
+            
+        # enable / disable gpus seclection based on backend
+        self.ui.lstHostGpu.enabled = backend == "docker"
+            
+        # update install backend button and images list
+        self.updateInstallUDockerBackendButtonState()
+        self.updateBackendImagesList()
+            
+    def updateInstallUDockerBackendButtonState(self) -> None:
+        assert self.logic
+        
+        if self.ui.backendSelector.currentText == "udocker":
+            is_installed = self.logic.isUdockerBackendInstalled()
+            self.ui.cmdInstallUdocker.enabled = True
+            
+            if is_installed:
+                self.ui.cmdInstallUdocker.text = "uninstall"
+            else:
+                self.ui.cmdInstallUdocker.text = "install"
+        else:
+            self.ui.cmdInstallUdocker.enabled = False
+        
+    def onBackendImageSelect(self) -> None:
+        
+        # if no image selected, disable update and remove buttons
+        selected = self.ui.lstBackendImages.currentItem()
+        
+        # check if selected item is enabled
+        # FIXME: somehow, & operator didn't work with `selected.flags() & qt.Qt.ItemIsEnabled`, but as we set qt.Qt.ItemIsEnabled as the only flag, this should be ok at least for now.
+        enabled = selected.flags() != qt.Qt.ItemIsEnabled
+        
+        # enable / disable image actions
+        self.ui.cmdImageUpdate.enabled = selected is not None and enabled
+        self.ui.cmdImageRemove.enabled = selected is not None and enabled
+        
+        # debug
+        print(f"Selected image: {selected.text()}, status: {enabled}")
+    
+    def onBackendImageUpdate(self) -> None:
+        assert self.logic
+
+        # get selected image
+        selected = self.ui.lstBackendImages.currentItem()
+        image_name = selected.text()
+        
+        # debug
+        print(f"Updating image: {image_name}")
+        
+        # show a message box
+        msg = qt.QMessageBox()
+        msg.setIcon(qt.QMessageBox.Warning)
+        msg.setText(f"Do you want to update image {image_name}?")
+        msg.setWindowTitle("Update image")
+        msg.setStandardButtons(qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
+        msg.setDefaultButton(qt.QMessageBox.Cancel)
+        ret = msg.exec_()
+        
+        if ret != qt.QMessageBox.Ok:
+            return
+        
+        # debug
+        print("Updating image")
+        
+        # add `updating...` to image and disable entry
+        selected.setText(f"{image_name} (updating...)")
+        selected.setFlags(qt.Qt.ItemIsEnabled)
+        
+        # on stop callback removes `updating...` from image
+        def on_stop(*args):
+            selected.setText(image_name)
+            
+        # update image
+        self.logic.update_image(image_name, on_stop=on_stop)
+    
+    def onBackendImageRemove(self) -> None:
+        assert self.logic
+        
+        # get selected image
+        selected = self.ui.lstBackendImages.currentItem()
+        image_name = selected.text()
+        
+        # debug
+        print(f"Removing image: {image_name}")
+        
+        # show a message box
+        msg = qt.QMessageBox()
+        msg.setIcon(qt.QMessageBox.Warning)
+        msg.setText(f"Do you want to remove image {image_name}?")
+        msg.setWindowTitle("Remove image")
+        msg.setStandardButtons(qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
+        msg.setDefaultButton(qt.QMessageBox.Cancel)
+        ret = msg.exec_()
+        
+        if ret != qt.QMessageBox.Ok:
+            return
+        
+        # debug
+        print("Removing image")
+        
+        # add `removing...` to image and disable entry
+        selected.setText(f"{image_name} (removing...)")
+        selected.setFlags(qt.Qt.ItemIsEnabled)
+        
+        # on stop callback removes entry
+        def on_stop(*args):
+            self.ui.lstBackendImages.takeItem(self.ui.lstBackendImages.row(selected))
+        
+        # remove image
+        self.logic.remove_image(image_name, on_stop=on_stop)
+
+    def updateBackendImagesList(self) -> None:
+        assert self.logic is not None
+        
+        # get selected backend
+        backend = self.ui.backendSelector.currentText
+        
+        # get available images
+        images = self.logic.getLocalImages(backend)
+        
+        # update list
+        self.ui.lstBackendImages.clear()
+        for image in images:
+            item = qt.QListWidgetItem()
+            item.setText(image)
+            self.ui.lstBackendImages.addItem(item)
 
     def initiateHostTest(self) -> None:
         assert self.logic is not None
@@ -364,6 +723,12 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #         print(item.text())
         # return
         
+        # deactivate apply button
+        self.ui.applyButton.enabled = False
+        
+        # get backend
+        backend = self.ui.backendSelector.currentText
+        
         ###### TEST (for caching on host)
         # get InstanceUIDs (only available for nodes loaded through the dicom module)
         node = self.ui.inputSelector.currentNode()
@@ -374,55 +739,63 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         hash.update(instanceUIDs.encode('utf-8'))
         instance_idh = hash.hexdigest()
 
+        # get selected model
+        model_name = self.ui.modelSelector.currentText
+
         print(instance_idh)
     
         with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
             assert self.logic is not None
             
-            host_base = "/tmp/mhub_slicer_extension"
-            host_dir = os.path.join(host_base, instance_idh)
-            local_dir = "/Users/lenny/Projects/SlicerMHubIntegration/SlicerMHubRunner/return_data"
-            local_in_zip = os.path.join(local_dir, "input.zip")
-            local_out_dir = os.path.join(local_dir, "output")
+            import shutil
             
-            if not os.path.isdir(local_dir):
-                os.makedirs(local_dir)
+            tmp_dir = "/tmp/mhub_slicer_extension"
+            #tmp_dir = "/Users/lenny/Projects/SlicerMHubIntegration/SlicerMHubRunner/return_data"
+            input_dir = os.path.join(tmp_dir, "input")
+            output_dir = os.path.join(tmp_dir, "output")
+            
+            # if temp dir exists remove it
+            if os.path.exists(tmp_dir):
+                shutil.rmtree(tmp_dir)
                 
-            if not os.path.isdir(local_out_dir):
-                os.makedirs(local_out_dir)
+            # create temp dir with input and output dir
+            os.makedirs(input_dir)
+            os.makedirs(output_dir)
             
             # get selected gpus
             # TODO: make gpus None 
-            gpus = []
-            for i in range(self.ui.lstHostGpu.count):
-                item = self.ui.lstHostGpu.item(i)
-                if item.checkState() == qt.Qt.Checked:
-                    print("Selected GPU: ", item.text())
-                    gpus.append(i)
+            gpus: Optional[List[int]] = None
+            if self.ui.chkGpuEnabled.checked:
+                gpus = []
+                for i in range(self.ui.lstHostGpu.count):
+                    item = self.ui.lstHostGpu.item(i)
+                    if item.checkState() == qt.Qt.Checked:
+                        print("Selected GPU: ", item.text())
+                        gpus.append(i)
             
-            #
-            # self.logic.zip_node(
-            #     self.ui.inputSelector.currentNode(),
-            #     local_in_zip
-            # )
+            # create temp directory for slicer-mhub under $HOME/.slicer-mhub
+            self.logic.copy_node(
+                self.ui.inputSelector.currentNode(),
+                input_dir
+            )
+            
+            # update apply button elapsed time
+            def onProgress(progress: float):
+                self.ui.applyButton.text = f"Applying ({progress}s)"
             
             #
             self.logic.run_mhub(
-                applyButton=self.ui.applyButton,
-                hostid=self.ui.hostSelector.currentText,
-                model="gc_lunglobes",
+                model=model_name,
+                backend=backend,
                 gpus=gpus,
-                host_dir=host_dir,
-                local_dir=local_dir,
-                local_in_zip=local_in_zip,
-                local_out_dir=local_out_dir
+                input_dir=input_dir,
+                output_dir=output_dir,
+                onProgress=onProgress,
+                onStop=self._checkCanApply
             )
         
-            #
-            dsegfiles = self.logic.scanDirectoryForFilesWithExtension(local_dir)
-            self.logic.addFilesToDatabase(dsegfiles, operation="copy")
-            self.logic.importSegmentations(dsegfiles)
-        
+            
+       
 #
 # Asynchronous class for ssh operations
 #
@@ -491,6 +864,12 @@ class HostInformation:
     dockerVersion: str
     gpus: List[str]
     cachedSubjects: List[str]
+
+@dataclass
+class BackendInformation:
+    name: str
+    version: str
+    available: bool
 
 class SSHHHelper(AsyncTask):
     
@@ -797,11 +1176,12 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         """
         ScriptedLoadableModuleLogic.__init__(self)
         self.setupPythonRequirements()
+        self._executables: Dict[str, str] = {}
         self.hosts: List[str] = []
         self.hostInfo: Dict[str, HostInformation] = {}
 
         # load available hosts
-        self.getAvailableSshHosts()
+        # self.getAvailableSshHosts()
 
     def getParameterNode(self):
         return MRunner2ParameterNode(super().getParameterNode())
@@ -822,30 +1202,216 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             #self.log('paramiko is required. Installing...')
             slicer.util.pip_install('paramiko')
         
-    def getAvailableSshHosts(self) -> List[str]:
-        from sshconf import read_ssh_config
-        from os.path import expanduser
+    def getModels(self) -> List[str]:
+        import requests, json
+        
+        # download model information from api endpoint (json)
+        # TODO: use https://mhub.ai/api/v2/models/detailed, filter for segmentation models
+        MHUBAI_API_ENDPOINT_MODELS = "https://mhub.ai/api/v2/models"
+        
+        # fetch
+        response = requests.get(MHUBAI_API_ENDPOINT_MODELS)
+        
+        # parse
+        payload = json.loads(response.text)
+        
+        # return
+        models: List[str] = payload['data']['models']
+        
+        # return
+        return models
+    
+    def getDockerExecutable(self, refresh: bool = False) -> Optional[str]:
+        import platform
+        import subprocess
 
-        c = read_ssh_config(expanduser("~/.ssh/config"))
-        self.hosts = list(c.hosts())
+        if not refresh and "docker" in self._executables and self._executables["docker"]:
+            return self._executables["docker"]
         
-    def testSshHost(self, hostid: str, onStart: Callable[[], None], onProgress: Callable[[int], None], onStop: Callable[[], None]):
-        # instantiate and setup the async task
-        sshHelper = SSHHHelper()
-        sshHelper.setup(hostid=hostid)
+        # get operation system
+        ops = platform.system()
+                
+        # find docker executable (windows, any linux, mac)
+        docker_executable = None
+        if ops == "Windows":
+            docker_executable = "C:\Program Files\Docker\Docker"
+        elif ops == "Darwin":
+            docker_executable = "/usr/local/bin/docker"
+        elif ops == "Linux":
+            try:
+                docker_executable = subprocess.run(["which", "docker"], capture_output=True).stdout.decode('utf-8').strip('\n')
+            except Exception as e:
+                pass
+            
+        # debug
+        print("Docker executable: ", docker_executable)
+            
+        # error
+        if docker_executable is None or docker_executable == "":
+            print("WARNING: ", "Docker executable not found.")
         
-        # custom callbacks
-        def _onStop(hostInfo: HostInformation):
-            self.hostInfo[hostid] = hostInfo
-            onStop()
+        # cache
+        self._executables["docker"] = docker_executable
         
-        # assign callbacks
-        sshHelper.setOnStart(onStart)
-        sshHelper.setOnProgress(onProgress)
-        sshHelper.setOnStop(_onStop)
+        # deliver
+        return docker_executable
+    
+    def getUDockerExecutable(self, refresh: bool = False) -> Optional[str]:
+        # TODO: return optional and display installation instructions under backend tab
+        
+        # TODO: figure out installation path.
+        # TODO: pro/cons installing udocker in slicer vs. using system wide installation (also consider the nature of the tool)
+        #return "/home/exouser/Downloads/Slicer-5.6.2-linux-amd64/lib/Python/bin/udocker" # <- linux: pip install executable
+        #return "/home/exouser/Downloads/Slicer-5.6.2-linux-amd64/lib/Python/lib/python3.9/site-packages/udocker" # <- linux: pip install directory
+        #return "/Applications/Slicer.app/Contents/lib/Python/bin/udocker" #  <- macos: pip install executable
+    
+        import platform
+        import subprocess
 
-        # start the helper async task
-        sshHelper.start()
+        # cache lookup
+        if not refresh and "udocker" in self._executables and self._executables["udocker"]:
+            return self._executables["udocker"]
+
+        # get operation system
+        ops = platform.system()
+
+        # find docker executable
+        udocker_executable = None
+        if ops == "Linux":
+            try:
+                udocker_executable = subprocess.run(["which", "udocker"], capture_output=True).stdout.decode('utf-8').strip('\n')
+            except Exception as e:
+                pass
+            
+        # debug
+        print("U-Docker executable: ", udocker_executable)
+            
+        # error
+        if udocker_executable is None or udocker_executable == "":
+            print("WARNING: ", "U-Docker executable not found.")
+        
+        # cache
+        self._executables["udocker"] = udocker_executable
+        
+        # deliver
+        return udocker_executable
+    
+    def getBackendInformation(self, name: str) -> BackendInformation:
+        assert name in ["docker", "udocker"]
+        import subprocess, re
+        
+        # initialize bi
+        bi = BackendInformation(name, "N/A", False)
+        
+        
+        # fetch version and availability from backend     
+        if name == "docker":
+            try:
+                docker_exec = self.getDockerExecutable()
+                print("running" , docker_exec, "--version")
+                result = subprocess.run([docker_exec, "--version"], timeout=5, check=True, capture_output=True)
+                bi.version = result.stdout.decode('utf-8')
+                bi.available = True
+                print("Docker available")
+            except Exception as e:
+                bi.version = "E"
+                bi.available = False
+                
+        elif name == "udocker":              
+            try:
+                # use launchConsoleProcess to run udocker --version
+                # import udocker
+                # bi.version = udocker.__version__ #proc.stdout.read().decode('utf-8')
+                # bi.available = True
+                
+                # get udocker exec
+                # TODO: check https://github.com/Slicer/Slicer/blob/9391c208f0d25a2fe2e6b19667766e759c6160c7/Base/Python/
+                # slicer/util.py#L3857
+                
+                # run
+                udocker_exec = self.getUDockerExecutable()
+                print("running: ", udocker_exec, "--version")
+                result = subprocess.run([udocker_exec, "--version"], timeout=5, check=True, capture_output=True)
+                print("result: ", result.stdout.decode('utf-8'))
+                
+                # extract "version: x.x.x" from string
+                version = re.search(r"version: ([0-9]+\.[0-9]+\.[0-9]+)", result.stdout.decode('utf-8'))
+                
+                bi.version = f"Version: {version.groups()[0]}" if version else "???"
+                bi.available = True
+                print("Udocker available")
+                
+            except Exception as e:
+                bi.version = "E"
+                bi.available = False
+        
+        # return 
+        return bi
+    
+    def isUdockerBackendInstalled(self) -> bool:
+        try:
+            import udocker
+            return True
+        except ModuleNotFoundError as e:
+            return False
+    
+    def installUdockerBackend(self):
+        
+        # chekc if udocker is already installed
+        is_installed = self.isUdockerBackendInstalled()
+
+        # install udocker in slicer
+        if not is_installed:
+            # install udocker
+            slicer.util.pip_install('udocker')
+            udocker_exec = self.getUDockerExecutable()
+            
+            # install additional dependencies
+            slicer.util.launchConsoleProcess([udocker_exec, "install"]) # --force
+        else:
+            slicer.util.pip_uninstall('udocker')
+        
+    def getGPUInformation(self) -> List[str]:
+        import subprocess
+        
+        # try to get gpus from nvidia-smi
+        # TODO: extract additional version information from nvidia-smi 
+        #       or have a separate availability cheecker for nvidia-smi
+        try:
+            result = subprocess.run(["nvidia-smi", "--list-gpus"], timeout=5, check=True, capture_output=True)
+            gpus = result.stdout.decode('utf-8').split("\n")
+        except Exception as e:
+            gpus = []
+            
+        # return
+        return gpus
+
+    def getLocalImages(self, backend: str) -> List[str]:
+        
+        # get images
+        import subprocess
+        
+        try:
+            if backend == "docker":
+                docker_exec = self.getDockerExecutable()
+                result = subprocess.run([docker_exec, "images", "--filter", "reference=mhubai/*", "--format", "{{.Repository}}|{{.Tag}}|{{.Size}}"], timeout=5, check=True, capture_output=True)
+                images = [i.split("|") for i in result.stdout.decode('utf-8').split("\n")]
+                images = [f"{i[0]}:latest ({i[2]})" for i in images if len(i) == 3 and i[1] == "latest"]
+                
+            elif backend == "udocker":
+                udocker_exec = self.getUDockerExecutable()
+                result = subprocess.run([udocker_exec, "images"], timeout=5, check=True, capture_output=True)
+                images = result.stdout.decode('utf-8').split("\n")
+                images = [image.split()[0] for image in images if image.startswith("mhubai/")]
+            
+            # remove empty strings
+            images = [image for image in images if image != ""]
+            
+        except Exception as e:
+            images = []
+            
+        # return
+        return images
         
         
     def get_node_paths(self, node) -> List[str]:
@@ -902,110 +1468,187 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
                 # let slicer breathe :D
                 slicer.app.processEvents()
 
-    def onMhubRunStop(self, success: bool):
-        print(f"Running MHUB DONE: {success}")
-
-    def run_mhub(self, applyButton: qt.QPushButton, hostid: str, model: str, gpus: Optional[List[int]], host_dir: str, local_dir, local_in_zip: str, local_out_dir: str, timeout: int = 600):
-
-        # create input and output folder on host
-        host_input_dir = os.path.join(host_dir, "dicom")
-        host_output_dir = os.path.join(host_dir, "results")
-        host_output_zip = os.path.join(host_dir, "results.zip")
-        local_output_zip = os.path.join(local_dir, "results.zip")
-
-        # create async cmd process chain
-        chain = ProcessChain()
-
-        # create temp dir on host
-        chain.add(["ssh", hostid, "mkdir", "-p", host_input_dir, host_output_dir], 
-                  name="Create temp dir on host")
-
-        # upload file to host
-        chain.add(["scp", local_in_zip, f"{hostid}:{host_dir}/input.zip"],
-                  name="Upload input file to host")
+    def copy_node(self, node, copy_dir: str, verbose: bool = True):
+        """
+        Copy all dicom files from a dicom image node to the specified location.
+        """
+        import shutil
         
-        # unzip file on host
-        chain.add(["ssh", hostid, "unzip", f"{host_dir}/input.zip", "-d", host_input_dir],
-                  name="Unzip input file on host")
-
+        # get list of all dicom files
+        files = self.get_node_paths(node)
+     
+        # print number of files
+        if verbose: 
+            print(f"number of files: {len(files)}")
+        
+        # check if the path exists 
+        if not os.path.exists(copy_dir):
+            os.makedirs(copy_dir)
+        
+        # copy all files to the specified location
+        for file in files:
+            shutil.copy(file, copy_dir)
+            
+            # let slicer breathe :D
+            slicer.app.processEvents()
+       
+    def _run_mhub_docker(self, model: str, gpus: Optional[List[int]], input_dir: str, output_dir: str, onProgress: Callable[[float], None], onStop: Callable, timeout: int = 600):
+        
         # gpus command
-        mhub_run_gpus = [] if gpus is None or len(gpus) == 0 else ["--gpus", f"'\"device={','.join(str(i) for i in gpus)}\"'"]
+        if gpus is None:
+            mhub_run_gpus = []
+        elif len(gpus) == 0:
+            mhub_run_gpus = ["--gpus", "all"]
+        else:
+            mhub_run_gpus = ["--gpus", f"'\"device={','.join(str(i) for i in gpus)}\"'"]
+        
+        # get executable
+        docker_exec = self.getDockerExecutable()
         
         # run mhub
-        chain.add([
-            "ssh", hostid,
-            "docker", "run", "--rm", "-t"
+        run_cmd = [
+            docker_exec, "run", "--rm", "-t", "--network=none"
         ] + mhub_run_gpus + [
-            "-v", f"{host_input_dir}:/app/data/input_data:ro",
-            "-v", f"{host_output_dir}:/app/data/output_data:rw",
+            "-v", f"{input_dir}:/app/data/input_data:ro",
+            "-v", f"{output_dir}:/app/data/output_data:rw",
             f"mhubai/{model}:latest"
-        ], name="Run mhub")
+        ]
         
-        # zip mhub output folder
-        chain.add(["ssh", hostid, "zip", "-r", host_output_zip, host_output_dir],
-                  name="Zip output folder on host")
+        # callback wrapper
+        def _on_stop(success: bool, returncode: int):
+            print(f"Command chain stopped with success: {success}")
+            onStop()
         
-        # download file from host
-        chain.add(["scp", f"{hostid}:{host_output_zip}", local_output_zip],
-                  name="Download output file from host")
+        # run async
+        po = ProgressObserver(run_cmd, frequency=2, timeout=timeout)
+        po.onStop(_on_stop)
+        po.onProgress(onProgress)
+
+    def _run_mhub_udocker(self, model: str, gpu: bool, input_dir: str, output_dir: str, onProgress: Callable[[float], None], onStop: Callable, timeout: int = 600):
         
-        # unzip results on local machine
-        chain.add(["unzip", local_output_zip, "-d", local_out_dir],
-                  name="Unzip output file on local machine")
+        # get executable
+        udocker_exec = self.getUDockerExecutable()
         
-        # define callbacks
-        def onMhubRunProgress(cmd: ProcessChain.CMD, time: int):
-            #print(f"Running MHUB: {cmd.index}: {cmd.name} - {time}")
-            applyButton.text = f"Running MHUB: {cmd.index}: {cmd.name} - {time}"
+        # callback wrapper
+        def _on_progress(cmd: ProcessChain.CMD, time: int):
+            #print(f"Command {cmd.name} running {time} seconds")
+            onProgress(float(time))
+            
+        def _on_stop(success: bool):
+            print(f"Command chain stopped with success: {success}")
+            onStop()
         
-        # connect chain observer
-        chain.onStop(self.onMhubRunStop)
-        chain.onProgress(onMhubRunProgress)
+        # initialize async processing chain
+        pc = ProcessChain()
+        pc.onStop(_on_stop)
+        pc.onProgress(_on_progress)
+
+        # setup gpu if required        
+        if gpu:
+            print("udocker with gpu")
+            
+            # check if image is already available or optionally pull image
+            images = self.getLocalImages("udocker")
+            print(images)
+            if f"mhubai/{model}:latest" not in images:
+                pull_cmd = [udocker_exec, "pull", f"mhubai/{model}:latest"]
+                pc.add(pull_cmd, name="Pull image")
+            
+            # create container
+            create_cmd = [udocker_exec, "create", f"--name={model}", f"mhubai/{model}:latest"]
         
-        # print commands
-        for cmd in chain.cmds:
-            print(cmd.name)
-            print(">", " ".join(cmd.cmd))
+            # setup container
+            setup_cmd = [udocker_exec, "setup", "--nvidia", "--force", model]
+            
+            # run container
+            run_cmd = [udocker_exec, "run", "--rm", "-t", 
+                       "-v", f"{input_dir}:/app/data/input_data:ro", 
+                       "-v", f"{output_dir}:/app/data/output_data:rw", 
+                       model]
+        
+            # processing chain
+            pc.add(create_cmd, name="Create container")
+            pc.add(setup_cmd, name="Setup container")
+            pc.add(run_cmd, name="Run container")
+            
+            # print execution plan
+            for cmd in pc.cmds:
+                print(cmd.name, cmd.cmd)
+        
+        else:
+            
+            # run container
+            run_cmd = [udocker_exec, "run", "--rm", "-t", 
+                       "-v", f"{input_dir}:/app/data/input_data:ro", 
+                       "-v", f"{output_dir}:/app/data/output_data:rw", 
+                       f"mhubai/{model}:latest"]
+        
+            # processing chain
+            pc.add(run_cmd, name="Run container")
+
+            
+        # run async
+        pc.start()
                 
-        # start the process chain
-        #chain.start()
+    def run_mhub(self, 
+                 model: str, 
+                 backend: Literal["docker", "udocker"],
+                 gpus: Optional[List[int]], 
+                 input_dir: str, 
+                 output_dir: str, 
+                 onProgress: Optional[Callable[[float], None]] = None,
+                 onStop: Optional[Callable] = None, 
+                 timeout: int = 600):
+                
+        # define callbacks
+        def _on_progress(time: float):
+            
+            # invoke onProgress callback
+            if onProgress is not None and callable(onProgress): 
+                onProgress(time)
+                
+        def _on_stop():
         
-    def process(self,
-                inputVolume: vtkMRMLScalarVolumeNode,
-                outputVolume: vtkMRMLScalarVolumeNode,
-                imageThreshold: float,
-                invert: bool = False,
-                showResult: bool = True) -> None:
-        """
-        Run the processing algorithm.
-        Can be used without GUI widget.
-        :param inputVolume: volume to be thresholded
-        :param outputVolume: thresholding result
-        :param imageThreshold: values above/below this threshold will be set to 0
-        :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-        :param showResult: show output volume in slice viewers
-        """
+            # import segmentations
+            dsegfiles = self.scanDirectoryForFilesWithExtension(output_dir)
+            self.addFilesToDatabase(dsegfiles, operation="copy")
+            self.importSegmentations(dsegfiles)
+        
+            # invoke onStop callback
+            if onStop is not None and callable(onStop): 
+                onStop()
+        
+        # run backend
+        if backend == "docker":
+            self._run_mhub_docker(model, gpus, input_dir, output_dir, _on_progress, _on_stop, timeout)
+        elif backend == "udocker":
+            self._run_mhub_udocker(model, gpus is not None, input_dir, output_dir, _on_progress, _on_stop, timeout)
 
-        if not inputVolume or not outputVolume:
-            raise ValueError("Input or output volume is invalid")
 
-        import time
-        startTime = time.time()
-        logging.info('Processing started')
+    def remove_image(self, image_name, on_stop = None, timeout: int = 0):
+        
+        # get docker executable
+        docker_exec = self.getDockerExecutable()
+        
+        # remove image cli command
+        cmd = [docker_exec, "rmi", image_name]
+        
+        # run command in bg
+        po = ProgressObserver(cmd, frequency=2, timeout=timeout)
+        if on_stop: po.onStop(on_stop)
 
-        # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-        cliParams = {
-            'InputVolume': inputVolume.GetID(),
-            'OutputVolume': outputVolume.GetID(),
-            'ThresholdValue': imageThreshold,
-            'ThresholdType': 'Above' if invert else 'Below'
-        }
-        cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
-        # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-        slicer.mrmlScene.RemoveNode(cliNode)
-
-        stopTime = time.time()
-        logging.info(f'Processing completed in {stopTime-startTime:.2f} seconds')
+    def update_image(self, image_name, on_stop = None, timeout: int = 0):
+        
+        # get docker executable
+        docker_exec = self.getDockerExecutable()
+        
+        # remove image cli command
+        cmd = [docker_exec, "pull", image_name]
+        
+        # run command in bg
+        po = ProgressObserver(cmd, frequency=2, timeout=timeout)
+        if on_stop: po.onStop(on_stop)
+        
 
     def scanDirectoryForFilesWithExtension(self, local_dir: str, extension: str = ".seg.dcm") -> List[str]:
         """
