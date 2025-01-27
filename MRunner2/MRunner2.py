@@ -924,7 +924,37 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                    
             def onStop(returncode: int, stdout: str, timedout: bool, killed: bool):
                 self._checkCanApply()
+                
+                # show message box
+                msg = qt.QMessageBox()
+                
+                # set message box icon
+                if returncode == 0:
+                    msg.setIcon(qt.QMessageBox.Information)
+                else:
+                    msg.setIcon(qt.QMessageBox.Warning)
+                    
+                # set message box title
+                msg.setWindowTitle(f"Terminated {model.label}")
+                
+                # set message box text
+                model_image_name = f"mhubai/{model.name}:latest"
+                text = f"Running {model.label} ({model_image_name}) finished with return code {returncode}."
+                if timedout:
+                    text += "\nProcess timed out."
+                if killed:
+                    text += "\nProcess killed."
+                msg.setText(text)
                                 
+                # set message box detailed text
+                msg.setDetailedText(stdout)
+                
+                # add buttons
+                msg.addButton(qt.QMessageBox.Ok)
+                
+                # show message box
+                msg.exec()
+                
             #
             self.logic.run_mhub(
                 model=model.name,
