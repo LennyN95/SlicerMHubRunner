@@ -391,15 +391,14 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         pass
     
     def onSearchModel(self, text: str) -> None:
+        assert self.logic is not None
         print("Search model: ", text)
-        
-        # TODO: proper caching
-        # load models
-        if not hasattr(self, "_model_cache"):
-            self._model_cache = self.logic.getModels()
+            
+        # get models 
+        models = self.logic.getModels()
             
         # filter models
-        models = [model for model in self._model_cache if text.lower() in model.lower()]
+        models = [model for model in models if model.str_match(text)]
         
         # update model list
         # self.ui.lstModelList.clear()
@@ -422,19 +421,24 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # make table columns use all available space
         self.ui.tblModelList.horizontalHeader().setStretchLastSection(True)
         
+        # select full row when cell is clicked
+        self.ui.tblModelList.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
+        
         # fill table with models that match the search text
         for model in models:
             rowPosition = self.ui.tblModelList.rowCount
             self.ui.tblModelList.insertRow(rowPosition)
-            
+                        
             # add model name
-            self.ui.tblModelList.setItem(rowPosition, 0, qt.QTableWidgetItem(model))
+            label_item = qt.QTableWidgetItem(model.label)
+            label_item.setData(qt.Qt.UserRole, model)
+            self.ui.tblModelList.setItem(rowPosition, 0, label_item)
             
             # add model type (placeholder)
-            self.ui.tblModelList.setItem(rowPosition, 1, qt.QTableWidgetItem("type"))
+            self.ui.tblModelList.setItem(rowPosition, 1, qt.QTableWidgetItem(",".join(model.categories)))
             
             # add model image (placeholder) 
-            self.ui.tblModelList.setItem(rowPosition, 2, qt.QTableWidgetItem("image"))
+            self.ui.tblModelList.setItem(rowPosition, 2, qt.QTableWidgetItem(",".join(model.modalities)))
             
             # create horizontal layout, add pull, run, and details buttons, and set layout to cell
             layout = qt.QHBoxLayout()
@@ -474,22 +478,55 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             widget.setLayout(layout)
             self.ui.tblModelList.setCellWidget(rowPosition, 3, widget)
             
-    def onModelWeb(self, model: str) -> None:
+            # if model has more than 1 input, disable row
+            if not model.inputs_compatibility:
+                for ci in range(4):
+                    item = self.ui.tblModelList.item(rowPosition, ci)
+                    if item:
+                        item.setFlags(item.flags() & ~qt.Qt.ItemIsEditable)  # Make it non-editable
+                        item.setBackground(qt.Qt.gray)  # Change background color to indicate it's disabled
+                        item.setForeground(qt.Qt.white)  # Change text color to white
+                
+            
+    def onModelDetails(self, model: 'Model') -> None:
+        
+        # get model
+        #model = self.logic.getModel(model_name)
+        
+        # display popup with model details
+        msg = qt.QMessageBox()
+        msg.setIcon(qt.QMessageBox.Information)
+        msg.setWindowTitle(model.label)
+        msg.setText(model.description)
+        msg.setDetailedText(f"Model: {model.label}\nDescription: {model.description}\nModalities: {model.modalities}\nCategories: {model.categories}")
+        
+        # add buttons
+        msg.addButton(qt.QMessageBox.Ok)
+        
+        # show message box
+        msg.exec()
+        
+            
+    def onModelWeb(self, model: 'Model') -> None:
         
         # open model in web
-        url = "https://mhub.ai/models/" + model
-        slicer.util.openUrlInDefaultWebBrowser(url)    
+        url = qt.QUrl("https://mhub.ai/models/" + model.name)  
+        qt.QDesktopServices.openUrl(url)
+  
         
-    def onModelPull(self, button: qt.QPushButton, model_name: str) -> None:
+    def onModelPull(self, button: qt.QPushButton, model: 'Model') -> None:
         assert self.logic is not None
         
         # disable button and block table selection signals temporarily
-        self.ui.tblModelList.blockSignals(True)
+        #self.ui.tblModelList.blockSignals(True)
         button.enabled = False
-        self.ui.tblModelList.blockSignals(False)
+        #self.ui.tblModelList.blockSignals(False)
+        
+        # set button text to pulling
+        button.text = "Pulling..."
         
         # construct image name
-        image_name = f"mhubai/{model_name}:latest"
+        image_name = f"mhubai/{model.name}:latest"
         
         # debug
         print("Pulling image: ", image_name)
@@ -504,7 +541,21 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         # # pull model
         # self.logic.update_image(image_name, on_stop=on_stop)
-            
+           
+    def onModelLoadTest(self, model: str) -> None:
+        
+        # create temporary directory to store test data
+        
+        # run mhub.test and mount the temp directory into the /app/data/input_data
+        
+        # check if there are dicom files in the input directory
+        
+        # check if already in database
+        # QUESTION: how?
+        
+        # import into database and load sample
+        
+        pass 
 
     def onModelSelect(self, index: int) -> None:
         
@@ -521,7 +572,8 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onModelSelectFromTable(self, row: int, col: int) -> None:
         
         # get model name
-        model_name = self.ui.tblModelList.item(row, 0).text()
+        model = self.ui.tblModelList.item(row, 0).data(qt.Qt.UserRole)
+        model_name = model.name
 
         # debug
         print("Model selected: ", row, col, model_name)
@@ -855,6 +907,28 @@ class AsyncTask:
     def onStop(self):
         pass
 
+@dataclass
+class Model:
+    id: str
+    name: str
+    label: str
+    description: str    
+    modalities: list[str]
+    categories: list[str]
+    
+    inputs: list[str]
+    inputs_compatibility: bool
+    
+    def str_match(self, text: str) -> bool:
+        tl = text.lower()
+        if tl in self.name.lower() or tl in self.label.lower() or tl in self.description.lower():
+            return True
+        if any([tl in m.lower() for m in self.modalities]):
+            return True
+        if any([tl in c.lower() for c in self.categories]):
+            return True
+        return False
+    
 @dataclass
 class HostInformation:
     name: str
@@ -1202,12 +1276,31 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             #self.log('paramiko is required. Installing...')
             slicer.util.pip_install('paramiko')
         
-    def getModels(self) -> List[str]:
+    def getModel(self, model_name: str) -> Model:
+        
+        # get models
+        models = self.getModels()
+        
+        # find model
+        model = next((m for m in models if m.name == model_name), None)
+        
+        # error if not available
+        if model is None:
+            raise ValueError(f"Model not found: {model_name}")
+        
+        # return
+        return model
+        
+    def getModels(self, cached: bool = True) -> List[Model]:
         import requests, json
         
+        # return from cache if available
+        if cached and hasattr(self, "_model_cache"):
+            return self._model_cache
+        
         # download model information from api endpoint (json)
-        # TODO: use https://mhub.ai/api/v2/models/detailed, filter for segmentation models
-        MHUBAI_API_ENDPOINT_MODELS = "https://mhub.ai/api/v2/models"
+        # -> migrate from https://mhub.ai/api/v2/models to https://mhub.ai/api/v2/models/detailed
+        MHUBAI_API_ENDPOINT_MODELS = "https://mhub.ai/api/v2/models/detailed"
         
         # fetch
         response = requests.get(MHUBAI_API_ENDPOINT_MODELS)
@@ -1215,9 +1308,28 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         # parse
         payload = json.loads(response.text)
         
-        # return
-        models: List[str] = payload['data']['models']
-        
+        # get model list
+        models: List[Model] = []
+        for model_data in payload['data']:
+            
+            # check if model inputs are compatible with slicer extension
+            inputs_compatibility = len(model_data['inputs']) == 1 and all([i['format'].lower() == 'dicom' for i in model_data['inputs']])
+            
+            # create model
+            models.append(Model(
+                id=model_data['id'],
+                name=model_data['name'],
+                label=model_data['label'],
+                description=model_data['description'],
+                modalities=model_data['modalities'],
+                categories=model_data['categories'],
+                inputs=[i['description'] for i in model_data['inputs']],
+                inputs_compatibility=inputs_compatibility
+            ))
+            
+        # cache
+        self._model_cache = models
+
         # return
         return models
     
