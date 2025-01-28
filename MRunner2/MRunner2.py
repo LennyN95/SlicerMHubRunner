@@ -1077,6 +1077,7 @@ class Model:
     description: str    
     modalities: list[str]
     categories: list[str]
+    roi: list[str]
     
     inputs: list[str]
     inputs_compatibility: bool
@@ -1084,6 +1085,8 @@ class Model:
     def str_match(self, text: str) -> bool:
         tl = text.lower()
         if tl in self.name.lower() or tl in self.label.lower() or tl in self.description.lower():
+            return True
+        if any([tl in r.lower() for r in self.roi]):
             return True
         if any([tl in m.lower() for m in self.modalities]):
             return True
@@ -1578,6 +1581,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
                 label=model_data['label'],
                 description=model_data['description'],
                 modalities=model_data['modalities'],
+                roi=model_data['segmentations'],
                 categories=model_data['categories'],
                 inputs=[i['description'] for i in model_data['inputs']],
                 inputs_compatibility=inputs_compatibility
