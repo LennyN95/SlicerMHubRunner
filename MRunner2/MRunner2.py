@@ -677,10 +677,6 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # debug
         print("Model selected: ", row, col, model_name)
         
-        # update model page
-        url = "https://mhub.ai/models/" + model_name
-        self.ui.lblModelPage.text = f'<a href="{url}">{url}</a>'
-        
         # update apply button
         self._checkCanApply()
 
