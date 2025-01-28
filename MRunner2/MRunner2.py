@@ -429,11 +429,6 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         num_tasks = len(ProgressObserver._tasks)
         details = "\n".join(["- " + " ".join(task.cmd) + "\n>" + str(task.data) + "\n" for task in ProgressObserver._tasks])
         
-        tstask = ProgressObserver.getTasksWhere(image_name="mhubai/platipy:latest")
-        details = f"found {len(tstask)}\n"
-        if len(tstask) > 0:
-            details += "\n".join(["- " + " ".join(task.cmd) + "\n>" + str(task.data) + "\n" for task in tstask])
-        
         # display message box
         msg = qt.QMessageBox()
         msg.setIcon(qt.QMessageBox.Warning)
@@ -811,7 +806,14 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         selected.setFlags(qt.Qt.ItemIsEnabled)
         
         # on stop callback removes entry
-        def on_stop(*args):
+        def on_stop(errorcode: int, stdout: str, *args):
+            
+            # debug
+            print(f"/ Image {image_name} removed \\")            
+            print(stdout)
+            print(f"\\ Image {image_name} removed (errorCode: {errorcode}) /")            
+            
+            # FIXME: this is very optimistic...
             self.ui.lstBackendImages.takeItem(self.ui.lstBackendImages.row(selected))
         
         # remove image
@@ -1363,6 +1365,7 @@ class ProgressObserver:
             self._timer.stop()
             self._proc.kill()
             self._stop(-1, True, False)
+            self._tasks.remove(self)
             return
         
         # stop timer if process is done
@@ -1370,6 +1373,7 @@ class ProgressObserver:
             returncode = self._proc.returncode
             self._timer.stop()
             self._stop(returncode, False, False)
+            self._tasks.remove(self)
             return
 
         # call progress method
