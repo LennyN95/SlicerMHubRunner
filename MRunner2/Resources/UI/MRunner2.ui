@@ -108,11 +108,14 @@
    </item>
    <item>
     <widget class="ctkCollapsibleButton" name="CollapsibleButton">
+     <property name="enabled">
+      <bool>true</bool>
+     </property>
      <property name="text">
       <string>Backend</string>
      </property>
      <property name="collapsed">
-      <bool>false</bool>
+      <bool>true</bool>
      </property>
      <layout class="QFormLayout" name="formLayout_5">
       <item row="0" column="0">
@@ -441,17 +444,17 @@
         </item>
        </layout>
       </item>
-      <item row="3" column="0">
-       <widget class="QPushButton" name="cmdKillObservedProcesses">
-        <property name="text">
-         <string>Kill OProcs</string>
-        </property>
-       </widget>
-      </item>
       <item row="4" column="0" colspan="2">
        <widget class="QPlainTextEdit" name="txtLogs">
         <property name="enabled">
          <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <widget class="QPushButton" name="cmdKillObservedProcesses">
+        <property name="text">
+         <string>Kill all Background Processes</string>
         </property>
        </widget>
       </item>
