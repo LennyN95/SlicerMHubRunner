@@ -16,6 +16,9 @@
      <property name="text">
       <string>MHub Model</string>
      </property>
+     <property name="collapsed">
+      <bool>false</bool>
+     </property>
      <layout class="QFormLayout" name="formLayout_4">
       <item row="0" column="1">
        <widget class="ctkSearchBox" name="searchModel"/>
@@ -47,34 +50,10 @@
      <property name="text">
       <string>Input Image</string>
      </property>
+     <property name="collapsed">
+      <bool>false</bool>
+     </property>
      <layout class="QFormLayout" name="formLayout_2">
-      <item row="2" column="1">
-       <layout class="QHBoxLayout" name="horizontalLayout_5"/>
-      </item>
-      <item row="1" column="1">
-       <widget class="qMRMLNodeComboBox" name="inputSelector">
-        <property name="toolTip">
-         <string>Pick the input to the algorithm.</string>
-        </property>
-        <property name="nodeTypes">
-         <stringlist notr="true">
-          <string>vtkMRMLScalarVolumeNode</string>
-         </stringlist>
-        </property>
-        <property name="showChildNodeTypes">
-         <bool>false</bool>
-        </property>
-        <property name="addEnabled">
-         <bool>false</bool>
-        </property>
-        <property name="removeEnabled">
-         <bool>false</bool>
-        </property>
-        <property name="SlicerParameterName" stdset="0">
-         <string>inputVolume</string>
-        </property>
-       </widget>
-      </item>
       <item row="0" column="1">
        <widget class="qMRMLSubjectHierarchyTreeView" name="SubjectHierarchyTreeView">
         <property name="levelFilter">
@@ -97,6 +76,30 @@
         </property>
         <property name="excludeNodeAttributeNamesFilter">
          <stringlist notr="true"/>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="qMRMLNodeComboBox" name="inputSelector">
+        <property name="toolTip">
+         <string>Pick the input to the algorithm.</string>
+        </property>
+        <property name="nodeTypes">
+         <stringlist notr="true">
+          <string>vtkMRMLScalarVolumeNode</string>
+         </stringlist>
+        </property>
+        <property name="showChildNodeTypes">
+         <bool>false</bool>
+        </property>
+        <property name="addEnabled">
+         <bool>false</bool>
+        </property>
+        <property name="removeEnabled">
+         <bool>false</bool>
+        </property>
+        <property name="SlicerParameterName" stdset="0">
+         <string>inputVolume</string>
         </property>
        </widget>
       </item>
@@ -408,7 +411,7 @@
       <string>Advanced</string>
      </property>
      <property name="collapsed">
-      <bool>false</bool>
+      <bool>true</bool>
      </property>
      <layout class="QFormLayout" name="formLayout_3">
       <item row="1" column="0">
@@ -471,19 +474,44 @@
     </widget>
    </item>
    <item>
-    <widget class="QPushButton" name="applyButton">
-     <property name="enabled">
-      <bool>true</bool>
+    <layout class="QHBoxLayout" name="horizontalLayout_5" stretch="0,0">
+     <property name="spacing">
+      <number>10</number>
      </property>
-     <property name="toolTip">
-      <string>Run the algorithm.</string>
-     </property>
-     <property name="text">
-      <string>Run Model</string>
-     </property>
-    </widget>
+     <item>
+      <widget class="QPushButton" name="applyButton">
+       <property name="enabled">
+        <bool>true</bool>
+       </property>
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Minimum">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="toolTip">
+        <string>Run the algorithm.</string>
+       </property>
+       <property name="text">
+        <string>Run Model</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancelButton">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Minimum" vsizetype="Minimum">
+         <horstretch>0</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
-   
    <item>
     <spacer name="verticalSpacer">
      <property name="orientation">

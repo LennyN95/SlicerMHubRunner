@@ -172,6 +172,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Buttons
         self.ui.applyButton.connect('clicked(bool)', self.onApplyButton)
+        self.ui.cancelButton.connect('clicked(bool)', self.onCancelButton)
         self.ui.cmdKillObservedProcesses.connect('clicked(bool)', self.onKillObservedProcessesButton)
         self.ui.cmdBackendReload.connect('clicked(bool)', self.onBackendUpdate)
         self.ui.cmdInstallUdocker.connect('clicked(bool)', self.logic.installUdockerBackend)
@@ -383,6 +384,13 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
     def _checkCanApply(self, caller=None, event=None) -> None:
         
+        # check if model is already running
+        tasks = ProgressObserver.getTasksWhere(operation="run")
+        if len(tasks) > 0:
+            self.ui.cancelButton.enabled = True
+            return
+        self.ui.cancelButton.enabled = False
+        
         # check if model is selected
         model = self.getModelFromTableSelection()
         
@@ -417,9 +425,30 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         Run processing when user clicks "Kill Observed Processes" button.
         """
         
+        # values
+        num_tasks = len(ProgressObserver._tasks)
+        details = "\n".join(["- " + " ".join(task.cmd) + "\n>" + str(task.data) + "\n" for task in ProgressObserver._tasks])
+        
+        tstask = ProgressObserver.getTasksWhere(image_name="mhubai/platipy:latest")
+        details = f"found {len(tstask)}\n"
+        if len(tstask) > 0:
+            details += "\n".join(["- " + " ".join(task.cmd) + "\n>" + str(task.data) + "\n" for task in tstask])
+        
+        # display message box
+        msg = qt.QMessageBox()
+        msg.setIcon(qt.QMessageBox.Warning)
+        msg.setWindowTitle("Kill Observed Processes")
+        msg.setText(f"Do you want to kill {num_tasks} observed processes?")
+        msg.setDetailedText(details)
+        msg.setStandardButtons(qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
+        msg.setDefaultButton(qt.QMessageBox.Cancel)
+        ret = msg.exec_()
+        
+        if ret != qt.QMessageBox.Ok:
+            return
+        
         # kill all observed processes
-        for task in ProgressObserver._tasks:
-            task.kill()
+        ProgressObserver.killAll()
 
     def updateHostGpuList(self) -> None:
         assert self.logic is not None
@@ -832,6 +861,19 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             
     #     self.initiateHostTest()
     
+    def onCancelButton(self) -> None:
+        
+        # search for the running process
+        tasks = ProgressObserver.getTasksWhere(operation="run")
+        assert len(tasks) <= 1, "Multiple tasks running"
+        assert len(tasks) > 0, "No task running"
+        
+        # get task
+        task = tasks[0]
+        
+        # kill task
+        task.kill()
+    
     def onApplyButton(self) -> None:
         """
         Run processing when user clicks "Apply" button.
@@ -853,8 +895,9 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         #         print(item.text())
         # return
         
-        # deactivate apply button
+        # deactivate apply button and activate cancel button
         self.ui.applyButton.enabled = False
+        self.ui.cancelButton.enabled = True
         
         # get backend
         backend = self.ui.backendSelector.currentText
@@ -924,9 +967,6 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                    
             def onStop(returncode: int, stdout: str, timedout: bool, killed: bool):
                 
-                # update run button
-                self._checkCanApply()
-                
                 # show message box
                 msg = qt.QMessageBox()
                 
@@ -956,6 +996,9 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 
                 # show message box
                 msg.exec()
+                
+                # update run button
+                self._checkCanApply()
                 
             #
             self.logic.run_mhub(
@@ -1200,14 +1243,46 @@ class ProgressObserver:
     # keep track of all running tasks
     _tasks: List['ProgressObserver'] = []
     
-    def __init__(self, cmd: List[str], frequency: float = 2, timeout: int = 0):
+    @classmethod
+    def killAll(cls):
+        for task in cls._tasks:
+            task.kill()
+            
+    @classmethod
+    def getTasksWhere(cls, include_disabled: bool = False, **kwargs):
+        matched_tasks = []
+        for task in cls._tasks:
+            
+            if task.data is None: 
+                continue
+            
+            if not include_disabled and task._disabled:
+                continue
+            
+            match = True
+            for key, value in kwargs.items():
+                if key not in task.data or task.data[key] != value:
+                    match = False
+                    break
+        
+            if match:
+                matched_tasks.append(task)
+        
+        return matched_tasks
+    
+    def __init__(self, cmd: List[str], frequency: float = 2, timeout: int = 0, data: Optional[Dict[str, Any]] = None):
         """
         cmd:       command to execute in subprocess
         frequency: progress update frequency in Hz
         timeout:   timeout in seconds, 0 means no timeout
         """
         
+        # identifiers / cache 
+        self.cmd = cmd
+        self.data = data
+        
         # set variables
+        self._disabled = False
         self._timeout = timeout
         self._frequency = frequency
         self._seconds_elapsed = 0.0
@@ -1276,6 +1351,10 @@ class ProgressObserver:
     def _onTimeout(self):
         assert self._proc is not None
         
+        # skip if disabled
+        if self._disabled:
+            return
+        
         # update time
         self._seconds_elapsed += 1.0 / self._frequency
         
@@ -1284,19 +1363,18 @@ class ProgressObserver:
             self._timer.stop()
             self._proc.kill()
             self._stop(-1, True, False)
+            return
         
         # stop timer if process is done
         if self._proc.poll() is not None:
             returncode = self._proc.returncode
             self._timer.stop()
             self._stop(returncode, False, False)
-                
             return
 
         # call progress method
         if self._onProgress:
-            # self._proc.stdout.read().decode('utf-8') # <--- carful, can block, only when needed and do experiment        
-            
+                        
             # fetch the latest process stdout from file
             with open(self._stdout_file_name, 'r', encoding='utf-8') as f:
                 f.seek(self._stdout_readpointer)
@@ -1313,10 +1391,24 @@ class ProgressObserver:
         self._onProgress = callback
 
     def kill(self):
-        self._stop(-1, False, True)
+        
+        # disable
+        self._disabled = True
+        
+        # stop the timer
         self._timer.stop()
+        
+        # try to stop 
+        try:
+            self._stop(-1, False, True)
+        except Exception as e:
+            print("Error when killing process: stop method failed. ", self.cmd, e)
+            
+        # then stop timer, kill process and remove from tasks
         if self._proc is not None:
             self._proc.kill()
+            
+        # remove from tasks
         self._tasks.remove(self)
   
 class ProcessChain:
@@ -1814,7 +1906,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             onStop(returncode, stdout, timedout, killed)
         
         # run async
-        po = ProgressObserver(run_cmd, frequency=2, timeout=timeout)
+        po = ProgressObserver(run_cmd, frequency=2, timeout=timeout, data={"image_name": f"mhubai/{model}:latest", "operation": "run"})
         po.onStop(_on_stop)
         po.onProgress(onProgress)
 
@@ -1928,7 +2020,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         cmd = [docker_exec, "rmi", image_name]
         
         # run command in bg
-        po = ProgressObserver(cmd, frequency=2, timeout=timeout)
+        po = ProgressObserver(cmd, frequency=2, timeout=timeout, data={"image_name": image_name, "operation": "remove"})
         if on_stop: po.onStop(on_stop)
 
     def update_image(self, image_name, on_stop: Optional[Callable[[int, str, bool, bool], None]] = None, timeout: int = 0):
@@ -1940,7 +2032,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         cmd = [docker_exec, "pull", image_name]
         
         # run command in bg
-        po = ProgressObserver(cmd, frequency=2, timeout=timeout)
+        po = ProgressObserver(cmd, frequency=2, timeout=timeout, data={"image_name": image_name, "operation": "update"})
         if on_stop: po.onStop(on_stop)
         
         # log output (DEBUG ONLY)
