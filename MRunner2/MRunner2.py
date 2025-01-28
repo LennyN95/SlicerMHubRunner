@@ -804,33 +804,33 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             item.setText(image)
             self.ui.lstBackendImages.addItem(item)
 
-    def initiateHostTest(self) -> None:
-        assert self.logic is not None
+    # def initiateHostTest(self) -> None:
+    #     assert self.logic is not None
         
-        def onStart():
-            self.ui.lblHostTestStatus.setText("Testing.")
-            self.ui.hostSelector.enabled = False
-            self.ui.cmdTestHost.enabled = False
+    #     def onStart():
+    #         self.ui.lblHostTestStatus.setText("Testing.")
+    #         self.ui.hostSelector.enabled = False
+    #         self.ui.cmdTestHost.enabled = False
         
-        def onProgress(progress: int):
-            self.ui.lblHostTestStatus.setText(f"Testing ({progress}s)")
+    #     def onProgress(progress: int):
+    #         self.ui.lblHostTestStatus.setText(f"Testing ({progress}s)")
         
-        def onStop():
-            self.ui.hostSelector.enabled = True
-            self.ui.cmdTestHost.enabled = True
-            self.ui.lblHostTestStatus.setText("Done.")
+    #     def onStop():
+    #         self.ui.hostSelector.enabled = True
+    #         self.ui.cmdTestHost.enabled = True
+    #         self.ui.lblHostTestStatus.setText("Done.")
 
-            # update host information
-            self.updateHostInfo()
+    #         # update host information
+    #         self.updateHostInfo()
             
-        self.logic.testSshHost(self.ui.hostSelector.currentText, onStart, onProgress, onStop)
+    #     self.logic.testSshHost(self.ui.hostSelector.currentText, onStart, onProgress, onStop)
 
-    def onTestHostButton(self) -> None:
-        """
-        Run processing when user clicks "Test Host" button.
-        """
+    # def onTestHostButton(self) -> None:
+    #     """
+    #     Run processing when user clicks "Test Host" button.
+    #     """
             
-        self.initiateHostTest()
+    #     self.initiateHostTest()
     
     def onApplyButton(self) -> None:
         """
@@ -923,6 +923,8 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.ui.txtLogs.appendPlainText(stdout)
                    
             def onStop(returncode: int, stdout: str, timedout: bool, killed: bool):
+                
+                # update run button
                 self._checkCanApply()
                 
                 # show message box
