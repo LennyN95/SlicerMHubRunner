@@ -1060,11 +1060,11 @@ class Model:
 #     gpus: List[str]
 #     cachedSubjects: List[str]
 
-# @dataclass
-# class BackendInformation:
-#     name: str
-#     version: str
-#     available: bool
+@dataclass
+class BackendInformation:
+    name: str
+    version: str
+    available: bool
 
 # class SSHHHelper(AsyncTask):
     
