@@ -593,12 +593,15 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         details += [hlst("Modalities", model.modalities)]
         details += [hlst("Categories", model.categories)]
         details += [hlst("Inputs", model.inputs)]
+        details += ["\n REQUIRED CITATION: \n"]
+        details += [f"The model was provided through the MHub.ai platform and is available under https://mhub.ai/models/{model.name}."]
+        details += [model.cite]
         
         # display popup with model details
         msg = qt.QMessageBox()
         msg.setIcon(qt.QMessageBox.Information)
         msg.setWindowTitle(model.label)
-        msg.setText(model.description)
+        msg.setText(model.description + "\n\n" + "Show details for the required citation, input description and more.")
         msg.setDetailedText("\n\n".join(details))
         
         # add buttons
@@ -1078,6 +1081,7 @@ class Model:
     modalities: list[str]
     categories: list[str]
     roi: list[str]
+    cite: str
     
     inputs: list[str]
     inputs_compatibility: bool
@@ -1583,6 +1587,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
                 modalities=model_data['modalities'],
                 roi=model_data['segmentations'],
                 categories=model_data['categories'],
+                cite=model_data['cite'],
                 inputs=[i['description'] for i in model_data['inputs']],
                 inputs_compatibility=inputs_compatibility
             ))
