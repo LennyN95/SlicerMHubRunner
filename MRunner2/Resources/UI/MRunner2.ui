@@ -14,7 +14,7 @@
    <item>
     <widget class="ctkCollapsibleButton" name="outputsCollapsibleButton">
      <property name="text">
-      <string>Step1 - Search and Select MHub.ai Model</string>
+      <string>Step 1 - Search and Select MHub.ai Model</string>
      </property>
      <property name="collapsed">
       <bool>false</bool>
