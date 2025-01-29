@@ -452,6 +452,39 @@
     </widget>
    </item>
    <item>
+    <widget class="ctkCollapsibleButton" name="CollapsibleButton_2">
+     <property name="text">
+      <string>Output</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_6">
+      <item row="1" column="0" colspan="2">
+       <widget class="QListWidget" name="lstOutputFiles"/>
+      </item>
+      <item row="0" column="0">
+       <widget class="qMRMLNodeComboBox" name="outputTableSelector">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="nodeTypes">
+         <stringlist notr="true">
+          <string>vtkMRMLTableNode</string>
+         </stringlist>
+        </property>
+        <property name="hideChildNodeTypes">
+         <stringlist notr="true"/>
+        </property>
+        <property name="renameEnabled">
+         <bool>true</bool>
+        </property>
+        <property name="interactionNodeSingletonTag">
+         <string notr="true"/>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <layout class="QHBoxLayout" name="horizontalLayout_5" stretch="0,0">
      <property name="spacing">
       <number>10</number>
@@ -489,6 +522,13 @@
       </widget>
      </item>
     </layout>
+   </item>
+   <item>
+    <widget class="QPushButton" name="cmdTest">
+     <property name="text">
+      <string>Test Output</string>
+     </property>
+    </widget>
    </item>
    <item>
     <spacer name="verticalSpacer">

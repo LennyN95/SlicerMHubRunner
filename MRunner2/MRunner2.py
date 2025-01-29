@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Annotated, Any, Optional, List, Callable, Literal, Dict
+from typing import Annotated, Any, Optional, List, Callable, Literal, Dict, Union
 from dataclasses import dataclass
 import tempfile
 
@@ -183,6 +183,8 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.lstBackendImages.connect('itemSelectionChanged()', self.onBackendImageSelect)
         self.ui.cmdImageUpdate.connect('clicked(bool)', self.onBackendImageUpdate)
         self.ui.cmdImageRemove.connect('clicked(bool)', self.onBackendImageRemove)
+        self.ui.cmdTest.connect('clicked(bool)', self.prepareOutput)
+        self.ui.lstOutputFiles.connect('itemSelectionChanged()', self.onOutputFileSelect)
                 
         # search box "searchModel" and model list "lstModelList"
         self.ui.searchModel.textChanged.connect(self.onSearchModel)
@@ -206,6 +208,9 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # -> https://apidocs.slicer.org/v4.8/classqMRMLSubjectHierarchyTreeView.html#a3214047490b8efd11dc9abf59c646495
         self.ui.SubjectHierarchyTreeView.setMRMLScene(slicer.mrmlScene)
         self.ui.SubjectHierarchyTreeView.connect('currentItemChanged(vtkIdType)', self.onSubjectHierarchyTreeViewCurrentItemChanged)
+
+        # table selector 
+        self.ui.outputTableSelector.setMRMLScene(slicer.mrmlScene)
 
         # input node
         # self.ui.inputSelector.connect('currentNodeChanged(vtkMRMLNode*)', self.onInputNodeSelect)
@@ -862,6 +867,104 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             
     #     self.initiateHostTest()
     
+    def prepareOutput(self) -> None:
+        assert self.logic is not None
+        
+        # read output files from temp directory
+        # TODO: use Path instead of os consistently
+        tmp_dir = "/tmp/mhub_slicer_extension"
+        output_dir = os.path.join(tmp_dir, "output")
+        
+        # get output files
+        output_files = self.logic.scanDirectoryForFilesWithExtension(output_dir, extension=[".json", ".csv"])
+        
+        # clear output list
+        self.ui.lstOutputFiles.clear()
+        
+        # debug
+        print("Output files: ", output_files)
+        
+        # update list
+        for output_file in output_files:
+            item = qt.QListWidgetItem()
+            item.setText(os.path.relpath(output_file, output_dir))
+            self.ui.lstOutputFiles.addItem(item)
+            
+            # clicking on item opens the file
+            item.setData(qt.Qt.UserRole, output_file)
+            
+    def onOutputFileSelect(self) -> None:
+        assert self.logic is not None
+        
+        # get selected item
+        selected = self.ui.lstOutputFiles.currentItem()
+        if selected is None:
+            return
+        
+        # get output file
+        output_file = selected.data(qt.Qt.UserRole)
+        
+        # debug
+        print("Selected output file: ", output_file)
+        
+        # create table node
+        if not self.ui.outputTableSelector.currentNode():
+            print("create table node")
+            tableNode = slicer.vtkMRMLTableNode()
+            slicer.mrmlScene.AddNode(tableNode)
+            self.ui.outputTableSelector.setCurrentNode(tableNode)
+        else:
+            tableNode = self.ui.outputTableSelector.currentNode()
+        
+        # if file is json, open text
+        if output_file.endswith(".json"):
+            # self.openFile(output_file)
+         
+            import json
+            
+            # read json file
+            with open(output_file, 'r') as f:
+                data = json.load(f)
+                
+            # flatten nested json into dot-notation keys (array items in square brackets)
+            def flatten_json(y):
+                out = {}
+                def flatten(x, name=''):
+                    if type(x) is dict:
+                        for a in x:
+                            flatten(x[a], name + a + '.')
+                    elif type(x) is list:
+                        i = 0
+                        for a in x:
+                            flatten(a, name + str(i) + '.')
+                            i += 1
+                    else:
+                        out[name[:-1]] = x
+                flatten(y)
+                return out
+            
+            # flatten json
+            data = flatten_json(data)
+            
+            # debug
+            print("Flattened json: ", data)
+            
+            # create table
+            self.logic.renderTableData(tableNode, ["Key", "Value"], [[k, v] for k, v in data.items()])
+         
+        elif output_file.endswith(".csv"):
+
+            import csv
+            
+            # read csv file 
+            with open(output_file, 'r') as f:
+                reader = csv.reader(f)
+                csv_header = next(reader)
+                csv_data = list(reader)
+                
+            # create table
+            self.logic.renderTableData(tableNode, csv_header, csv_data)   
+
     def onCancelButton(self) -> None:
         
         # search for the running process
@@ -1003,7 +1106,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 
             #
             self.logic.run_mhub(
-                model=model.name,
+                model=model,
                 backend=backend,
                 gpus=gpus,
                 input_dir=input_dir,
@@ -1576,7 +1679,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         for model_data in payload['data']:
             
             # check if model inputs are compatible with slicer extension
-            inputs_compatibility = len(model_data['inputs']) == 1 and all([i['format'].lower() == 'dicom' for i in model_data['inputs']]) and 'Segmentation' in model_data['categories']
+            inputs_compatibility = len(model_data['inputs']) == 1 and all([i['format'].lower() == 'dicom' for i in model_data['inputs']]) and ('Segmentation' in model_data['categories'] or 'Prediction' in model_data['categories'])
             
             # create model
             models.append(Model(
@@ -1681,7 +1784,6 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         
         # initialize bi
         bi = BackendInformation(name, "N/A", False)
-        
         
         # fetch version and availability from backend     
         if name == "docker":
@@ -1814,6 +1916,51 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             instanceUIDs=node.GetAttribute('DICOM.instanceUIDs').split()
             return [slicer.dicomDatabase.fileForInstance(instanceUID) for instanceUID in instanceUIDs]
 
+    def renderTableData(self, tableNode, header: list[str], data: list[list[str]]) -> None:
+
+        # initialize table
+        tableWasModified = tableNode.StartModify()
+        tableNode.RemoveAllColumns()
+        
+        # Define table columns
+        for column in header:
+            col = tableNode.AddColumn()
+            col.SetName(column)
+            
+        # Add data to table
+        for row in data:
+            rowIndex = tableNode.AddEmptyRow()
+            for columnIndex, column in enumerate(row):
+                tableNode.SetCellText(rowIndex, columnIndex, str(column))
+                
+        tableNode.Modified()
+        tableNode.EndModify(tableWasModified)
+
+        # open csv in yellow table view node
+        self.showTable(tableNode)
+        
+    def openFile(self, file_path: str) -> None:
+        import subprocess
+        import sys
+
+        if sys.platform.startswith('win'):
+            subprocess.run(['start', '', file_path], shell=True)
+        elif sys.platform.startswith('darwin'):
+            subprocess.run(['open', file_path])
+        else:  # Assume Linux or other Unix-like systems
+            subprocess.run(['xdg-open', file_path])
+
+    def showTable(self, table):
+        """
+        Switch to a layout where tables are visible and show the selected one.
+        """
+        print("Show table view")
+        currentLayout = slicer.app.layoutManager().layout
+        layoutWithTable = slicer.modules.tables.logic().GetLayoutWithTable(currentLayout)
+        slicer.app.layoutManager().setLayout(layoutWithTable)
+        slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(table.GetID())
+        slicer.app.applicationLogic().PropagateTableSelection()
+
     # def upload_file(self, hostid: str, local_file: str, remote_file: str):
         
     #     # make sure host_input_dir exists / create dir under tmp
@@ -1884,7 +2031,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             # let slicer breathe :D
             slicer.app.processEvents()
        
-    def _run_mhub_docker(self, model: str, gpus: Optional[List[int]], input_dir: str, output_dir: str, onProgress: Callable[[float, str], None], onStop: Callable[[int, str, bool, bool], None], timeout: int = 600):
+    def _run_mhub_docker(self, model: 'Model', gpus: Optional[List[int]], input_dir: str, output_dir: str, onProgress: Callable[[float, str], None], onStop: Callable[[int, str, bool, bool], None], timeout: int = 600):
         
         # gpus command
         if gpus is None:
@@ -1903,7 +2050,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         ] + mhub_run_gpus + [
             "-v", f"{input_dir}:/app/data/input_data:ro",
             "-v", f"{output_dir}:/app/data/output_data:rw",
-            f"mhubai/{model}:latest",
+            f"mhubai/{model.name}:latest",
             "--workflow",
             "default",
             "--print"
@@ -1915,11 +2062,11 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             onStop(returncode, stdout, timedout, killed)
         
         # run async
-        po = ProgressObserver(run_cmd, frequency=2, timeout=timeout, data={"image_name": f"mhubai/{model}:latest", "operation": "run"})
+        po = ProgressObserver(run_cmd, frequency=2, timeout=timeout, data={"image_name": f"mhubai/{model.name}:latest", "operation": "run"})
         po.onStop(_on_stop)
         po.onProgress(onProgress)
 
-    def _run_mhub_udocker(self, model: str, gpu: bool, input_dir: str, output_dir: str, onProgress: Callable[[float, str], None], onStop: Callable[[int, str, bool, bool], None], timeout: int = 600):
+    def _run_mhub_udocker(self, model: 'Model', gpu: bool, input_dir: str, output_dir: str, onProgress: Callable[[float, str], None], onStop: Callable[[int, str, bool, bool], None], timeout: int = 600):
         
         # get executable
         udocker_exec = self.getUDockerExecutable()
@@ -1945,21 +2092,21 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             # check if image is already available or optionally pull image
             images = self.getLocalImages("udocker", cached=True)
             print(images)
-            if f"mhubai/{model}:latest" not in images:
-                pull_cmd = [udocker_exec, "pull", f"mhubai/{model}:latest"]
+            if f"mhubai/{model.name}:latest" not in images:
+                pull_cmd = [udocker_exec, "pull", f"mhubai/{model.name}:latest"]
                 pc.add(pull_cmd, name="Pull image")
             
             # create container
-            create_cmd = [udocker_exec, "create", f"--name={model}", f"mhubai/{model}:latest"]
+            create_cmd = [udocker_exec, "create", f"--name={model.name}", f"mhubai/{model.name}:latest"]
         
             # setup container
-            setup_cmd = [udocker_exec, "setup", "--nvidia", "--force", model]
+            setup_cmd = [udocker_exec, "setup", "--nvidia", "--force", model.name]
             
             # run container
             run_cmd = [udocker_exec, "run", "--rm", "-t", 
                        "-v", f"{input_dir}:/app/data/input_data:ro", 
                        "-v", f"{output_dir}:/app/data/output_data:rw", 
-                       model]
+                       model.name]
         
             # processing chain
             pc.add(create_cmd, name="Create container")
@@ -1976,7 +2123,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             run_cmd = [udocker_exec, "run", "--rm", "-t", 
                        "-v", f"{input_dir}:/app/data/input_data:ro", 
                        "-v", f"{output_dir}:/app/data/output_data:rw", 
-                       f"mhubai/{model}:latest"]
+                       f"mhubai/{model.name}:latest"]
         
             # processing chain
             pc.add(run_cmd, name="Run container")
@@ -1986,7 +2133,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         pc.start()
                 
     def run_mhub(self, 
-                 model: str, 
+                 model: 'Model', 
                  backend: Literal["docker", "udocker"],
                  gpus: Optional[List[int]], 
                  input_dir: str, 
@@ -2005,9 +2152,15 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         def _on_stop(returncode: int, stdout: str, timedout: bool, killed: bool):
         
             # import segmentations
-            dsegfiles = self.scanDirectoryForFilesWithExtension(output_dir)
-            self.addFilesToDatabase(dsegfiles, operation="copy")
-            self.importSegmentations(dsegfiles)
+            if 'Segmentation' in model.categories:
+                dsegfiles = self.scanDirectoryForFilesWithExtension(output_dir)
+                self.addFilesToDatabase(dsegfiles, operation="copy")
+                self.importSegmentations(dsegfiles)
+                
+            elif 'Prediction' in model.categories:
+
+
+                pass
         
             # invoke onStop callback
             if onStop is not None and callable(onStop): 
@@ -2053,14 +2206,15 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         po.onProgress(onProgress)
         
 
-    def scanDirectoryForFilesWithExtension(self, local_dir: str, extension: str = ".seg.dcm") -> List[str]:
+    def scanDirectoryForFilesWithExtension(self, local_dir: str, extension: Union[str, list[str]] = ".seg.dcm") -> List[str]:
         """
         Find all files with the specified extension in the specified directory and its subdirectories.
         """
+        extension = extension if isinstance(extension, list) else [extension]
         seg_files = []
         for root, _, files in os.walk(local_dir):
             for file in files:
-                if file.endswith(extension):
+                if len(extension) == 0 or any(file.endswith(e) for e in extension):
                     seg_files.append(os.path.join(root, file))
         return seg_files 
 
