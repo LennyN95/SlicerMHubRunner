@@ -183,7 +183,13 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.lstBackendImages.connect('itemSelectionChanged()', self.onBackendImageSelect)
         self.ui.cmdImageUpdate.connect('clicked(bool)', self.onBackendImageUpdate)
         self.ui.cmdImageRemove.connect('clicked(bool)', self.onBackendImageRemove)
+        
+        # output section
+        self.ui.pthRunsDirectory.currentPath = "/tmp/mhub_slicer_extension/runs"
         self.ui.lstOutputFiles.connect('itemSelectionChanged()', self.onOutputFileSelect)
+        self.ui.cmdRefreshOutputFiles.connect('clicked(bool)', self.updateOutputRunDirectories)
+        self.ui.cmbSelectRunOutput.connect('currentIndexChanged(int)', self.prepareOutput)
+        self.updateOutputRunDirectories()
                 
         # search box "searchModel" and model list "lstModelList"
         self.ui.searchModel.textChanged.connect(self.onSearchModel)
@@ -866,13 +872,42 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             
     #     self.initiateHostTest()
     
+    def updateOutputRunDirectories(self, open_latest: bool = False) -> None:
+        
+        # read output files from temp directory
+        runs_dir = self.ui.pthRunsDirectory.currentPath
+        
+        # capture selected run
+        selected_run = self.ui.cmbSelectRunOutput.currentText
+        
+        # get run directories
+        run_dirs = [str(d.name) for d in os.scandir(runs_dir) if d.is_dir() and not d.name.startswith(".")]
+        print("run_dirs: ", run_dirs)
+        
+        # clear run list
+        self.ui.cmbSelectRunOutput.clear()
+        
+        # update list
+        for run_dir in run_dirs:
+            self.ui.cmbSelectRunOutput.addItem(str(run_dir))
+            
+        # select previous run
+        if selected_run:
+            self.ui.cmbSelectRunOutput.setCurrentText(selected_run)
+        
+        # open latest run directory
+        if open_latest and run_dirs:
+            self.ui.cmbSelectRunOutput.setCurrentText(run_dirs[-1])
+    
     def prepareOutput(self) -> None:
         assert self.logic is not None
         
         # read output files from temp directory
-        # TODO: use Path instead of os consistently
-        tmp_dir = "/tmp/mhub_slicer_extension"
-        output_dir = os.path.join(tmp_dir, "output")
+        runs_dir = self.ui.pthRunsDirectory.currentPath
+        
+        # get selected run directory
+        selected_run = self.ui.cmbSelectRunOutput.currentText
+        output_dir = os.path.join(runs_dir, selected_run)
         
         # get output files
         output_files = self.logic.scanDirectoryForFilesWithExtension(output_dir, extension=[".json", ".csv"])
@@ -891,9 +926,6 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             
             # clicking on item opens the file
             item.setData(qt.Qt.UserRole, output_file)
-            
-        # open output section
-        self.ui.outputCollapsibleButton.collapsed = False
             
     def onOutputFileSelect(self) -> None:
         assert self.logic is not None
@@ -977,6 +1009,22 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # get task
         task = tasks[0]
         
+        # details of the running task
+        details = task.data
+        
+        # ask the user if he wants to stop the running model
+        msg = qt.QMessageBox()
+        msg.setIcon(qt.QMessageBox.Warning)
+        msg.setWindowTitle("Cancel running model")
+        msg.setText("Do you want to cancel the running model?")
+        msg.setDetailedText(details)
+        msg.setStandardButtons(qt.QMessageBox.Ok | qt.QMessageBox.Cancel)
+        msg.setDefaultButton(qt.QMessageBox.Cancel)
+        ret = msg.exec_()
+        
+        if ret != qt.QMessageBox.Ok:
+            return
+        
         # kill task
         task.kill()
     
@@ -1023,20 +1071,26 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         assert model is not None, "No model selected"
 
         print(instance_idh)
+        
+        # runid as yy.mm.dd-hh.mm.ss-model.name
+        runid = f"{datetime.now().strftime('%y.%m.%d-%H.%M.%S')}_{model.name}"
     
         with slicer.util.tryWithErrorDisplay(_("Failed to compute results."), waitCursor=True):
             assert self.logic is not None
             
             import shutil
             
-            tmp_dir = "/tmp/mhub_slicer_extension"
+            # TODO: create temp directory for slicer-mhub under $HOME/.slicer-mhub ??
             #tmp_dir = "/Users/lenny/Projects/SlicerMHubIntegration/SlicerMHubRunner/return_data"
+            tmp_dir = "/tmp/mhub_slicer_extension"
+            runs_dir = self.ui.pthRunsDirectory.currentPath
+
             input_dir = os.path.join(tmp_dir, "input")
-            output_dir = os.path.join(tmp_dir, "output")
+            output_dir = os.path.join(runs_dir, runid)
             
-            # if temp dir exists remove it
-            if os.path.exists(tmp_dir):
-                shutil.rmtree(tmp_dir)
+            # if input dir exists, remove it -> we always make sure to run on a fresh input dir (NOTE: parallel execution ofc wouldn't work like this)
+            if os.path.exists(input_dir):
+                shutil.rmtree(input_dir)
                 
             # create temp dir with input and output dir
             os.makedirs(input_dir)
@@ -1053,7 +1107,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                         print("Selected GPU: ", item.text())
                         gpus.append(i)
             
-            # create temp directory for slicer-mhub under $HOME/.slicer-mhub
+            # copy selected dicom data into input directory
             self.logic.copy_node(
                 self.ui.inputSelector.currentNode(),
                 input_dir
@@ -1062,30 +1116,31 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # clear logs
             self.ui.txtLogs.clear()
             
-            # update apply button elapsed time
+            # PROGRESS handler
             def onProgress(progress: float, stdout: Optional[str]):
                 self.ui.applyButton.text = f"Running {model.label} ({progress}s)"
-                
                 
                 # display stdout in txtLogs
                 if stdout is not None and stdout.strip() != "":
                     self.ui.txtLogs.appendPlainText(stdout)
                    
+            # TERMINATION handler
             def onStop(returncode: int, stdout: str, timedout: bool, killed: bool):
                 assert self.logic is not None
                 
-                # process model results
+                # ---------------------- process model results
+
                 if 'Segmentation' in model.categories:
                     dsegfiles = self.logic.scanDirectoryForFilesWithExtension(output_dir)
                     self.logic.addFilesToDatabase(dsegfiles, operation="copy")
                     self.logic.importSegmentations(dsegfiles)
                     
                 if 'Prediction' in model.categories:
-                    self.prepareOutput()
+                    self.updateOutputRunDirectories(open_latest=True)
+                    self.ui.outputCollapsibleButton.collapsed = False
                     
-                # ----------------------
+                # ---------------------- Message Box
                 
-                # show message box
                 msg = qt.QMessageBox()
                 msg.setIcon(qt.QMessageBox.Information if returncode == 0 else qt.QMessageBox.Warning)
                 msg.setWindowTitle(f"Terminated {model.label}")
@@ -1097,12 +1152,11 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 msg.addButton(qt.QMessageBox.Ok)
                 msg.exec()
                 
-                # ----------------------
+                # ---------------------- Update UI
                 
-                # update run button
                 self._checkCanApply()
                 
-            #
+            # run model logic
             self.logic.run_mhub(
                 model=model,
                 backend=backend,
