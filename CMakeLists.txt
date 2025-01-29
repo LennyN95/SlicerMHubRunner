@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16.3...3.19.7 FATAL_ERROR)
 
-project(SlicerMHubRunner2)
+project(SlicerMHubRunner)
 
 #-----------------------------------------------------------------------------
 # Extension meta-information
@@ -19,7 +19,7 @@ include(${Slicer_USE_FILE})
 
 #-----------------------------------------------------------------------------
 # Extension modules
-add_subdirectory(MRunner2)
+add_subdirectory(MHubRunner)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------

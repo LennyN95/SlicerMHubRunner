@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>MRunner2</class>
- <widget class="qMRMLWidget" name="MRunner2">
+ <class>MHubRunner</class>
+ <widget class="qMRMLWidget" name="MHubRunner">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -647,7 +647,7 @@
  <resources/>
  <connections>
   <connection>
-   <sender>MRunner2</sender>
+   <sender>MHubRunner</sender>
    <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
    <receiver>inputSelector</receiver>
    <slot>setMRMLScene(vtkMRMLScene*)</slot>

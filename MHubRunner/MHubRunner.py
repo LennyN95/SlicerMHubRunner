@@ -21,17 +21,17 @@ import hashlib
 from datetime import datetime
 
 #
-# MRunner2
+# MHubRunner
 #
 
-class MRunner2(ScriptedLoadableModule):
+class MHubRunner(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("MRunner2")  # TODO: make this more human readable by adding spaces
+        self.parent.title = _("MHubRunner")  # TODO: make this more human readable by adding spaces
         # TODO: set categories (folders where the module shows up in the module selector)
         self.parent.categories = [translate("qSlicerAbstractCoreModule", "Examples")]
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
@@ -40,7 +40,7 @@ class MRunner2(ScriptedLoadableModule):
         # _() function marks text as translatable to other languages
         self.parent.helpText = _("""
 This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#MRunner2">module documentation</a>.
+See more information in <a href="https://github.com/organization/projectname#MHubRunner">module documentation</a>.
 """)
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = _("""
@@ -69,45 +69,45 @@ def registerSampleData():
     # To ensure that the source code repository remains small (can be downloaded and installed quickly)
     # it is recommended to store data sets that are larger than a few MB in a Github release.
 
-    # MRunner21
+    # MHubRunner1
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category='MRunner2',
-        sampleName='MRunner21',
+        category='MHubRunner',
+        sampleName='MHubRunner1',
         # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
         # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, 'MRunner21.png'),
+        thumbnailFileName=os.path.join(iconsPath, 'MHubRunner1.png'),
         # Download URL and target file name
         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        fileNames='MRunner21.nrrd',
+        fileNames='MHubRunner1.nrrd',
         # Checksum to ensure file integrity. Can be computed by this command:
         #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
         checksums='SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95',
         # This node name will be used when the data set is loaded
-        nodeNames='MRunner21'
+        nodeNames='MHubRunner1'
     )
 
-    # MRunner22
+    # MHubRunner2
     SampleData.SampleDataLogic.registerCustomSampleDataSource(
         # Category and sample name displayed in Sample Data module
-        category='MRunner2',
-        sampleName='MRunner22',
-        thumbnailFileName=os.path.join(iconsPath, 'MRunner22.png'),
+        category='MHubRunner',
+        sampleName='MHubRunner2',
+        thumbnailFileName=os.path.join(iconsPath, 'MHubRunner2.png'),
         # Download URL and target file name
         uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        fileNames='MRunner22.nrrd',
+        fileNames='MHubRunner2.nrrd',
         checksums='SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97',
         # This node name will be used when the data set is loaded
-        nodeNames='MRunner22'
+        nodeNames='MHubRunner2'
     )
 
 
 #
-# MRunner2ParameterNode
+# MHubRunnerParameterNode
 #
 
 @parameterNodeWrapper
-class MRunner2ParameterNode:
+class MHubRunnerParameterNode:
     """
     The parameters needed by module.
 
@@ -125,10 +125,10 @@ class MRunner2ParameterNode:
 
 
 #
-# MRunner2Widget
+# MHubRunnerWidget
 #
 
-class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -151,7 +151,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath('UI/MRunner2.ui'))
+        uiWidget = slicer.util.loadUI(self.resourcePath('UI/MHubRunner.ui'))
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
@@ -162,7 +162,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
-        self.logic = MRunner2Logic()
+        self.logic = MHubRunnerLogic()
 
         # Connections
 
@@ -304,7 +304,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if firstVolumeNode:
                 self._parameterNode.inputVolume = firstVolumeNode
 
-    def setParameterNode(self, inputParameterNode: Optional[MRunner2ParameterNode]) -> None:
+    def setParameterNode(self, inputParameterNode: Optional[MHubRunnerParameterNode]) -> None:
         """
         Set and observe parameter node.
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
@@ -1651,10 +1651,10 @@ class ProcessChain:
         self._onProgress = callback
 
 
-# MRunner2Logic
+# MHubRunnerLogic
 #
 
-class MRunner2Logic(ScriptedLoadableModuleLogic):
+class MHubRunnerLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
     computation done by your module.  The interface
     should be such that other python code can import
@@ -1678,7 +1678,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
         # self.getAvailableSshHosts()
 
     def getParameterNode(self):
-        return MRunner2ParameterNode(super().getParameterNode())
+        return MHubRunnerParameterNode(super().getParameterNode())
 
     def setupPythonRequirements(self, upgrade=False):
         
@@ -2299,10 +2299,10 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
             importer.load(loadable)
 
 #
-# MRunner2Test
+# MHubRunnerTest
 #
 
-class MRunner2Test(ScriptedLoadableModuleTest):
+class MHubRunnerTest(ScriptedLoadableModuleTest):
     """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -2318,9 +2318,9 @@ class MRunner2Test(ScriptedLoadableModuleTest):
         """Run as few or as many tests as needed here.
         """
         self.setUp()
-        self.test_MRunner21()
+        self.test_MHubRunner1()
 
-    def test_MRunner21(self):
+    def test_MHubRunner1(self):
         """ Ideally you should have several levels of tests.  At the lowest level
         tests should exercise the functionality of the logic with different inputs
         (both valid and invalid).  At higher levels your tests should emulate the
@@ -2338,7 +2338,7 @@ class MRunner2Test(ScriptedLoadableModuleTest):
 
         import SampleData
         registerSampleData()
-        inputVolume = SampleData.downloadSample('MRunner21')
+        inputVolume = SampleData.downloadSample('MHubRunner1')
         self.delayDisplay('Loaded test data set')
 
         inputScalarRange = inputVolume.GetImageData().GetScalarRange()
@@ -2350,7 +2350,7 @@ class MRunner2Test(ScriptedLoadableModuleTest):
 
         # Test the module logic
 
-        logic = MRunner2Logic()
+        logic = MHubRunnerLogic()
 
         # Test algorithm with non-inverted threshold
         logic.process(inputVolume, outputVolume, threshold, True)

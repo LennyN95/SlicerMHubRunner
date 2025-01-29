@@ -16,7 +16,7 @@ We only need [Docker](https://docs.docker.com/get-docker/) 🐳 to be installed 
 First, open a volume in Slicer on which you want to run the plugin. 
 You can use your own data or the slicer sample data. 
 Slicer sample data can be found at *File > Download Sample Data*, to download a chest CT scan click on *CTChest*. 
-Now open the *MRunner* module (navigate to *3D Slicer > Modules > Examples > MRunner2*). 
+Now open the *MRunner* module (navigate to *3D Slicer > Modules > Examples > MHubRunner*). 
 You will now see the graphical user interface (GUI) of the module.
 
 <img width="602" alt="Bildschirmfoto 2025-01-27 um 11 11 28" src="https://github.com/user-attachments/assets/2d8ba82e-a6f2-41c9-8c57-12cc3418bc77" />
