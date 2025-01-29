@@ -183,7 +183,6 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.lstBackendImages.connect('itemSelectionChanged()', self.onBackendImageSelect)
         self.ui.cmdImageUpdate.connect('clicked(bool)', self.onBackendImageUpdate)
         self.ui.cmdImageRemove.connect('clicked(bool)', self.onBackendImageRemove)
-        self.ui.cmdTest.connect('clicked(bool)', self.prepareOutput)
         self.ui.lstOutputFiles.connect('itemSelectionChanged()', self.onOutputFileSelect)
                 
         # search box "searchModel" and model list "lstModelList"
@@ -893,6 +892,9 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             # clicking on item opens the file
             item.setData(qt.Qt.UserRole, output_file)
             
+        # open output section
+        self.ui.outputCollapsibleButton.collapsed = False
+            
     def onOutputFileSelect(self) -> None:
         assert self.logic is not None
         
@@ -1070,36 +1072,32 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                     self.ui.txtLogs.appendPlainText(stdout)
                    
             def onStop(returncode: int, stdout: str, timedout: bool, killed: bool):
+                assert self.logic is not None
+                
+                # process model results
+                if 'Segmentation' in model.categories:
+                    dsegfiles = self.logic.scanDirectoryForFilesWithExtension(output_dir)
+                    self.logic.addFilesToDatabase(dsegfiles, operation="copy")
+                    self.logic.importSegmentations(dsegfiles)
+                    
+                if 'Prediction' in model.categories:
+                    self.prepareOutput()
+                    
+                # ----------------------
                 
                 # show message box
                 msg = qt.QMessageBox()
-                
-                # set message box icon
-                if returncode == 0:
-                    msg.setIcon(qt.QMessageBox.Information)
-                else:
-                    msg.setIcon(qt.QMessageBox.Warning)
-                    
-                # set message box title
+                msg.setIcon(qt.QMessageBox.Information if returncode == 0 else qt.QMessageBox.Warning)
                 msg.setWindowTitle(f"Terminated {model.label}")
-                
-                # set message box text
-                model_image_name = f"mhubai/{model.name}:latest"
-                text = f"Running {model.label} ({model_image_name}) finished with return code {returncode}."
-                if timedout:
-                    text += "\nProcess timed out."
-                if killed:
-                    text += "\nProcess killed."
+                text = f"Running {model.label} (mhubai/{model.name}:latest) finished with return code {returncode}."
+                text += "\nProcess timed out." if timedout else ""
+                text += "\nProcess was killed." if killed else ""
                 msg.setText(text)
-                                
-                # set message box detailed text
                 msg.setDetailedText(stdout)
-                
-                # add buttons
                 msg.addButton(qt.QMessageBox.Ok)
-                
-                # show message box
                 msg.exec()
+                
+                # ----------------------
                 
                 # update run button
                 self._checkCanApply()
@@ -2140,7 +2138,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
                  output_dir: str, 
                  onProgress: Optional[Callable[[float, str], None]] = None,
                  onStop: Optional[Callable[[int, str, bool, bool], None]] = None, 
-                 timeout: int = 600):
+                 timeout: int = 1200):
                 
         # define callbacks
         def _on_progress(time: float, stdout: str):
@@ -2150,18 +2148,7 @@ class MRunner2Logic(ScriptedLoadableModuleLogic):
                 onProgress(time, stdout)
                 
         def _on_stop(returncode: int, stdout: str, timedout: bool, killed: bool):
-        
-            # import segmentations
-            if 'Segmentation' in model.categories:
-                dsegfiles = self.scanDirectoryForFilesWithExtension(output_dir)
-                self.addFilesToDatabase(dsegfiles, operation="copy")
-                self.importSegmentations(dsegfiles)
-                
-            elif 'Prediction' in model.categories:
-
-
-                pass
-        
+            
             # invoke onStop callback
             if onStop is not None and callable(onStop): 
                 onStop(returncode, stdout, timedout, killed)
