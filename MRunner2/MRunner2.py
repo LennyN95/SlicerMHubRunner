@@ -876,6 +876,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         # read output files from temp directory
         runs_dir = self.ui.pthRunsDirectory.currentPath
+        os.makedirs(runs_dir, exist_ok=True)
         
         # capture selected run
         selected_run = self.ui.cmbSelectRunOutput.currentText
@@ -904,6 +905,7 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         
         # read output files from temp directory
         runs_dir = self.ui.pthRunsDirectory.currentPath
+        os.makedirs(runs_dir, exist_ok=True)
         
         # get selected run directory
         selected_run = self.ui.cmbSelectRunOutput.currentText
@@ -1093,8 +1095,8 @@ class MRunner2Widget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 shutil.rmtree(input_dir)
                 
             # create temp dir with input and output dir
-            os.makedirs(input_dir)
-            os.makedirs(output_dir)
+            os.makedirs(input_dir, exist_ok=True)
+            os.makedirs(output_dir, exist_ok=True)
             
             # get selected gpus
             # TODO: make gpus None 
