@@ -383,6 +383,29 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # print all selected items
         for i in range(items.GetNumberOfIds()):
             print("Selected item: ", shNode.GetItemName(items.GetId(i)))
+            
+        # --- selection modality
+        
+        # check if selected item is a volume
+        print(type(volumeNode))
+        if volumeNode and (
+            volumeNode.IsA("vtkMRMLScalarVolumeNode") 
+         or volumeNode.IsA("vtkMRMLSegmentationNode")
+        ):
+            try:
+                # Get series instance UID from subject hierarchy
+                volumeItemId = shNode.GetItemByDataNode(volumeNode)
+                seriesInstanceUID = shNode.GetItemUID(volumeItemId, 'DICOM')
+
+                # Get patient name (0010,0010) from the first file of the series
+                instUids = slicer.dicomDatabase.instancesForSeries(seriesInstanceUID)
+                patient_name = slicer.dicomDatabase.instanceValue(instUids[0], '0010,0010')
+                modality = slicer.dicomDatabase.instanceValue(instUids[0], '0008,0060')
+
+                print("Modality: ", modality, " | Patient", patient_name)
+            except Exception as e:
+                print("Error accessing node's dicom data: ", e)
+                
 
     def onUpdateDockerExecutable(self, path) -> None:
         assert self.logic is not None
@@ -913,8 +936,16 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # capture selected run
         selected_run = self.ui.cmbSelectRunOutput.currentText
         
-        # get run directories
-        run_dirs = [str(d.name) for d in os.scandir(runs_dir) if d.is_dir() and not d.name.startswith(".")]
+        # get run directories, ordered by creation date
+        run_dirs = []
+        for d in os.scandir(runs_dir):
+            if not d.is_dir() or d.name.startswith("."):
+                continue
+            run_dirs.append(d)
+        run_dirs.sort(key=lambda d: d.stat().st_ctime, reverse=True)
+        run_dirs = [str(d.name) for d in run_dirs]
+            
+        # run_dirs = [str(d.name) for d in os.scandir(runs_dir) if d.is_dir() and not d.name.startswith(".")]
         print("run_dirs: ", run_dirs)
         
         # clear run list
@@ -1155,7 +1186,8 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
                 self.ui.applyButton.text = f"Running {model.label} ({progress}s)"
                 
                 # remove all color formatting from stdout string
-                stdout = re.sub(r'\x1b\[[0-9;]*m', '', stdout)
+                if stdout is not None:
+                    stdout = re.sub(r'\x1b\[[0-9;]*m', '', stdout)
                 
                 # display stdout in txtLogs
                 if stdout is not None and stdout.strip() != "":
