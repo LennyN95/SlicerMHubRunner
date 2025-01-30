@@ -3,6 +3,8 @@ import os
 from typing import Annotated, Any, Optional, List, Callable, Literal, Dict, Union
 from dataclasses import dataclass
 import tempfile
+from enum import Enum
+import re
 
 import slicer, ctk, vtk, qt
 from slicer.i18n import tr as _
@@ -35,17 +37,49 @@ class MHubRunner(ScriptedLoadableModule):
         # TODO: set categories (folders where the module shows up in the module selector)
         self.parent.categories = [translate("qSlicerAbstractCoreModule", "Examples")]
         self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["John Doe (AnyWare Corp.)"]  # TODO: replace with "Firstname Lastname (Organization)"
+        self.parent.contributors = ["Leonard Nuernberg (Harvard, Mass General Brigham, Maastricht University)"]  # TODO: replace with "Firstname Lastname (Organization)"
         # TODO: update with short description of the module and a link to online module documentation
         # _() function marks text as translatable to other languages
         self.parent.helpText = _("""
-This is an example of scripted loadable module bundled in an extension.
-See more information in <a href="https://github.com/organization/projectname#MHubRunner">module documentation</a>.
+<h1>MHub.ai 3D Slicer Extension Help</h1>
+
+<h2>Overview</h2>
+<p>The MHub.ai extension for 3D Slicer allows you to run machine learning models directly on loaded images using Docker. This integration facilitates advanced image analysis seamlessly within the Slicer environment.</p>
+
+<h2>Prerequisites</h2>
+<p>To use this extension, ensure that Docker is installed and running on your system. Follow the installation instructions based on your operating system:</p>
+<ul>
+    <li><b>Windows:</b>
+        <ul>
+            <li>Download and install Docker Desktop from <a href="https://www.docker.com/products/docker-desktop">Docker's website</a>.</li>
+            <li>Ensure Docker is running.</li>
+        </ul>
+    </li>
+    <li><b>macOS:</b>
+        <ul>
+            <li>Download and install Docker Desktop from <a href="https://www.docker.com/products/docker-desktop">Docker's website</a>.</li>
+            <li>Ensure Docker is running.</li>
+        </ul>
+    </li>
+    <li><b>Linux:</b>
+        <ul>
+            <li>Follow the installation instructions for your distribution from <a href="https://docs.docker.com/engine/install/">Docker's documentation</a>.</li>
+        </ul>
+    </li>
+</ul>
+
+<h2>Using the Extension</h2>
+<ol>
+    <li><b>Load an Image:</b> Begin by loading your desired image into 3D Slicer.</li>
+    <li><b>Select a Model:</b> In the MHub.ai extension interface, choose the model you wish to run on the loaded image.</li>
+    <li><b>Run the Model:</b> Click the "Run Model" button to initiate the analysis. The extension will utilize Docker to process the model.</li>
+    <li><b>View Results:</b> Once processing is complete, results will be displayed within 3D Slicer for your review and further analysis.</li>
+</ol>
 """)
         # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = _("""
-This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
-and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
+MHub.ai is a platform providing standardized and simple to use medical imaging AI models. This extension allows 
+to run these models directly from 3D Slicer.
 """)
 
         # Additional initialization step after application startup is complete
@@ -486,11 +520,11 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # filter models
         models = [model for model in models if model.str_match(text)]
         
-        # update model list
-        # self.ui.lstModelList.clear()
-        # for model in models:
-        #     self.ui.lstModelList.addItem(model)
+        # render models
+        self.renderModelTable(models)
             
+    def renderModelTable(self, models: List['Model']) -> None:
+        
         # set table height to 10 rows
         self.ui.tblModelList.setRowCount(10)
                     
@@ -539,9 +573,6 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             def create_pull_handler(btnPull, model):
                 return lambda: self.onModelPull(btnPull, model)
 
-            # def create_run_handler(btnRun, model):
-            #     return lambda: self.onModelRun(btnRun, model)
-
             def create_details_handler(model):
                 return lambda: self.onModelDetails(model)
             
@@ -552,19 +583,20 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             btnPull.clicked.connect(create_pull_handler(btnPull, model))
             layout.addWidget(btnPull)
             
-            # disable pull button if image is available locally
-            images = self.logic.getLocalImages("docker", cached=True)
-            images = [i.split()[0] for i in images]
-            model_image_name = f"mhubai/{model.name}:latest"
-            print(images, model_image_name)
-            if model_image_name in images:
+            if model.status == ModelStatus.PULLING:
+                btnPull.enabled = False
+                btnPull.text = "Pulling..."
+                btnPull.toolTip = "Image is being pulled"
+                
+            elif model.status == ModelStatus.PULLED:
                 btnPull.enabled = False
                 btnPull.text = "Pulled"
                 btnPull.toolTip = "Image is available locally"
-
-            # btnRun = qt.QPushButton("Run")
-            # btnRun.clicked.connect(create_run_handler(btnRun, model))
-            # layout.addWidget(btnRun)
+                
+            else:
+                btnPull.enabled = True
+                btnPull.text = "Pull"
+                btnPull.toolTip = "Pull image from MHub.ai"
 
             btnDetails = qt.QPushButton("Details")
             btnDetails.clicked.connect(create_details_handler(model))
@@ -1122,6 +1154,9 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             def onProgress(progress: float, stdout: Optional[str]):
                 self.ui.applyButton.text = f"Running {model.label} ({progress}s)"
                 
+                # remove all color formatting from stdout string
+                stdout = re.sub(r'\x1b\[[0-9;]*m', '', stdout)
+                
                 # display stdout in txtLogs
                 if stdout is not None and stdout.strip() != "":
                     self.ui.txtLogs.appendPlainText(stdout)
@@ -1229,6 +1264,13 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 #     def onStop(self):
 #         pass
 
+class ModelStatus(Enum):
+    UNKNOWN = "unknown"         # Model status is unknown
+    PULLABLE = "pullable"       # Model can be pulled
+    PULLING = "pulling"        # Model is beeing pulled
+    PULLED = "pulled"           # Model is available locally
+    RUNNING = "running"         # Model is running
+    
 @dataclass
 class Model:
     id: str
@@ -1242,6 +1284,8 @@ class Model:
     
     inputs: list[str]
     inputs_compatibility: bool
+    
+    status: ModelStatus = ModelStatus.UNKNOWN
     
     def str_match(self, text: str) -> bool:
         tl = text.lower()
@@ -1411,7 +1455,7 @@ class ProgressObserver:
             task.kill()
             
     @classmethod
-    def getTasksWhere(cls, include_disabled: bool = False, **kwargs):
+    def getTasksWhere(cls, include_disabled: bool = False, **kwargs) -> list['ProgressObserver']:
         matched_tasks = []
         for task in cls._tasks:
             
@@ -1711,48 +1755,76 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
         # return
         return model
         
-    def getModels(self, cached: bool = True) -> List[Model]:
+    def getModels(self, cached: bool = True, backend: str = 'docker') -> List[Model]:
         import requests, json
         
-        # return from cache if available
+        # -- 1 ----------- LOAD MODELS
+        
         if cached and hasattr(self, "_model_cache"):
-            return self._model_cache
-        
-        # download model information from api endpoint (json)
-        # -> migrate from https://mhub.ai/api/v2/models to https://mhub.ai/api/v2/models/detailed
-        MHUBAI_API_ENDPOINT_MODELS = "https://mhub.ai/api/v2/models/detailed"
-        
-        # fetch
-        response = requests.get(MHUBAI_API_ENDPOINT_MODELS)
-        
-        # parse
-        payload = json.loads(response.text)
-        
-        # get model list
-        models: List[Model] = []
-        for model_data in payload['data']:
             
-            # check if model inputs are compatible with slicer extension
-            inputs_compatibility = len(model_data['inputs']) == 1 and all([i['format'].lower() == 'dicom' for i in model_data['inputs']]) and ('Segmentation' in model_data['categories'] or 'Prediction' in model_data['categories'])
+            # return from cache if available
+            models = self._model_cache
+        
+        else:
+                    
+            # download model information from api endpoint (json)
+            # -> migrate from https://mhub.ai/api/v2/models to https://mhub.ai/api/v2/models/detailed
+            MHUBAI_API_ENDPOINT_MODELS = "https://mhub.ai/api/v2/models/detailed"
             
-            # create model
-            models.append(Model(
-                id=model_data['id'],
-                name=model_data['name'],
-                label=model_data['label'],
-                description=model_data['description'],
-                modalities=model_data['modalities'],
-                roi=model_data['segmentations'],
-                categories=model_data['categories'],
-                cite=model_data['cite'],
-                inputs=[i['description'] for i in model_data['inputs']],
-                inputs_compatibility=inputs_compatibility
-            ))
+            # fetch
+            response = requests.get(MHUBAI_API_ENDPOINT_MODELS)
             
-        # cache
-        self._model_cache = models
+            # parse
+            payload = json.loads(response.text)
+            
+            # get model list
+            models: List[Model] = []
+            for model_data in payload['data']:
+                
+                # check if model inputs are compatible with slicer extension
+                inputs_compatibility = len(model_data['inputs']) == 1 and all([i['format'].lower() == 'dicom' for i in model_data['inputs']]) and ('Segmentation' in model_data['categories'] or 'Prediction' in model_data['categories'])
+                            
+                # create model
+                models.append(Model(
+                    id=model_data['id'],
+                    name=model_data['name'],
+                    label=model_data['label'],
+                    description=model_data['description'],
+                    modalities=model_data['modalities'],
+                    roi=model_data['segmentations'],
+                    categories=model_data['categories'],
+                    cite=model_data['cite'],
+                    inputs=[i['description'] for i in model_data['inputs']],
+                    inputs_compatibility=inputs_compatibility
+                ))
+            
+            # cache
+            self._model_cache = models
 
-        # return
+        # -- 2 ----------- HYDRATE MODEL STATE
+
+        # get local images
+        # NOTE: this is backend specific, thus needs to be re-loaded when backend changes
+        images = self.getLocalImages(backend=backend, cached=cached)
+        images = [i.split()[0] for i in images]
+
+        # iterate models and update state
+        for model in models:
+            model_image_name = f"mhubai/{model.name}:latest"
+
+            if model_image_name in images:
+                model.status = ModelStatus.PULLED
+
+            elif ProgressObserver.getTasksWhere(operation="update", image_name=model_image_name):
+                model.status = ModelStatus.PULLING
+
+            elif ProgressObserver.getTasksWhere(operation="run", image_name=model_image_name):
+                model.status = ModelStatus.RUNNING
+                        
+            else:
+                model.status = ModelStatus.PULLABLE              
+
+        # -- 3 ----------- RETURN MODELS
         return models
     
     def getDockerExecutable(self, refresh: bool = False) -> Optional[str]:
