@@ -1,6 +1,8 @@
 import logging
 import os
-from typing import Annotated, Any, Optional, List, Callable, Literal, Dict, Union
+from typing import Annotated, Any, Optional, List, Literal, Dict, Union
+
+from collections.abc import Callable
 from dataclasses import dataclass
 import tempfile
 from enum import Enum
@@ -338,7 +340,7 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if firstVolumeNode:
                 self._parameterNode.inputVolume = firstVolumeNode
 
-    def setParameterNode(self, inputParameterNode: Optional[MHubRunnerParameterNode]) -> None:
+    def setParameterNode(self, inputParameterNode: MHubRunnerParameterNode | None) -> None:
         """
         Set and observe parameter node.
         Observation is needed because when the parameter node is changed then the GUI must be updated immediately.
@@ -546,7 +548,7 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # render models
         self.renderModelTable(models)
 
-    def renderModelTable(self, models: List['Model']) -> None:
+    def renderModelTable(self, models: list['Model']) -> None:
 
         # set table height to 10 rows
         self.ui.tblModelList.setRowCount(10)
@@ -725,7 +727,7 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         pass
 
-    def getModelFromTableSelection(self, row: Optional[int] = None) -> Optional['Model']:
+    def getModelFromTableSelection(self, row: int | None = None) -> Optional['Model']:
 
         # get selected row
         row = self.ui.tblModelList.currentRow() if row is None else row
@@ -1022,7 +1024,7 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             import json
 
             # read json file
-            with open(output_file, 'r') as f:
+            with open(output_file) as f:
                 data = json.load(f)
 
             # flatten nested json into dot-notation keys (array items in square brackets)
@@ -1056,7 +1058,7 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             import csv
 
             # read csv file
-            with open(output_file, 'r') as f:
+            with open(output_file) as f:
                 reader = csv.reader(f)
                 csv_header = next(reader)
                 csv_data = list(reader)
@@ -1163,7 +1165,7 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             # get selected gpus
             # TODO: make gpus None
-            gpus: Optional[List[int]] = None
+            gpus: list[int] | None = None
             if self.ui.chkGpuEnabled.checked:
                 gpus = []
                 for i in range(self.ui.lstHostGpu.count):
@@ -1182,7 +1184,7 @@ class MHubRunnerWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.txtLogs.clear()
 
             # PROGRESS handler
-            def onProgress(progress: float, stdout: Optional[str]):
+            def onProgress(progress: float, stdout: str | None):
                 self.ui.applyButton.text = f"Running {model.label} ({progress}s)"
 
                 # remove all color formatting from stdout string
@@ -1479,7 +1481,7 @@ class ProgressObserver:
     # _onStop: Optional[Callable[[int, str, bool, bool], None]] = None
 
     # keep track of all running tasks
-    _tasks: List['ProgressObserver'] = []
+    _tasks: list['ProgressObserver'] = []
 
     @classmethod
     def killAll(cls):
@@ -1508,7 +1510,7 @@ class ProgressObserver:
 
         return matched_tasks
 
-    def __init__(self, cmd: List[str], frequency: float = 2, timeout: int = 0, data: Optional[Dict[str, Any]] = None):
+    def __init__(self, cmd: list[str], frequency: float = 2, timeout: int = 0, data: dict[str, Any] | None = None):
         """
         cmd:       command to execute in subprocess
         frequency: progress update frequency in Hz
@@ -1526,8 +1528,8 @@ class ProgressObserver:
         self._seconds_elapsed = 0.0
 
         self._proc = None
-        self._onProgress: Optional[Callable[[float, str], None]] = None
-        self._onStop: Optional[Callable[[int, str, bool, bool], None]] = None
+        self._onProgress: Callable[[float, str], None] | None = None
+        self._onStop: Callable[[int, str, bool, bool], None] | None = None
 
         # initialize timer
         self._timer: qt.QTimer = qt.QTimer()
@@ -1555,7 +1557,7 @@ class ProgressObserver:
         # add to tasks
         self._tasks.append(self)
 
-    def _run(self, cmd: List[str]):
+    def _run(self, cmd: list[str]):
         import subprocess
 
         # run command
@@ -1576,7 +1578,7 @@ class ProgressObserver:
         print("read and remove temp stdout file", self._stdout_file_name, os.path.exists(self._stdout_file_name))
 
         # retrieve stdout
-        with open(self._stdout_file_name, 'r', encoding='utf-8') as f:
+        with open(self._stdout_file_name, encoding='utf-8') as f:
             stdout = f.read()
 
         # remove file
@@ -1616,7 +1618,7 @@ class ProgressObserver:
         if self._onProgress:
 
             # fetch the latest process stdout from file
-            with open(self._stdout_file_name, 'r', encoding='utf-8') as f:
+            with open(self._stdout_file_name, encoding='utf-8') as f:
                 f.seek(self._stdout_readpointer)
                 stdout = f.read()
                 self._stdout_readpointer = f.tell()
@@ -1656,16 +1658,16 @@ class ProcessChain:
     @dataclass
     class CMD:
         index: int
-        cmd: List[str]
-        name: Optional[str] = None
+        cmd: list[str]
+        name: str | None = None
         frequency: float = 2
         timeout: int = 0
-        returncode: Optional[int] = None
-        success: Optional[bool] = None
+        returncode: int | None = None
+        success: bool | None = None
         started: bool = False
 
     def __init__(self):
-        self.cmds: List['ProcessChain.CMD'] = []
+        self.cmds: list['ProcessChain.CMD'] = []
         self.started = False
         self.stopped = False
         self.success = True
@@ -1673,10 +1675,10 @@ class ProcessChain:
 
         self._seconds_elapsed = 0.0
 
-        self._onStop: Optional[Callable[[bool], None]] = None
-        self._onProgress: Optional[Callable[['ProcessChain.CMD', float], None]] = None
+        self._onStop: Callable[[bool], None] | None = None
+        self._onProgress: Callable[['ProcessChain.CMD', float], None] | None = None
 
-    def add(self, cmd: List[str], name: Optional[str] = None, timeout: int = 0, frequency: float = 2):
+    def add(self, cmd: list[str], name: str | None = None, timeout: int = 0, frequency: float = 2):
         assert not self.started, "Process chain already started"
         self.cmds.append(self.CMD(len(self.cmds), cmd, name, frequency, timeout))
 
@@ -1715,7 +1717,7 @@ class ProcessChain:
         if self._onProgress:
             self._onProgress(self.cmds[self.index], time)
 
-    def _start_process(self, cmd: List[str]):
+    def _start_process(self, cmd: list[str]):
         p = ProgressObserver(cmd)
         p.onStop(self._on_process_stop)
         p.onProgress(self._on_process_progress)
@@ -1746,7 +1748,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
         """
         ScriptedLoadableModuleLogic.__init__(self)
         self.setupPythonRequirements()
-        self._executables: Dict[str, str] = {}
+        self._executables: dict[str, str] = {}
         # self.hosts: List[str] = []
         # self.hostInfo: Dict[str, HostInformation] = {}
 
@@ -1787,7 +1789,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
         # return
         return model
 
-    def getModels(self, cached: bool = True, backend: str = 'docker') -> List[Model]:
+    def getModels(self, cached: bool = True, backend: str = 'docker') -> list[Model]:
         import requests, json
 
         # -- 1 ----------- LOAD MODELS
@@ -1810,7 +1812,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
             payload = json.loads(response.text)
 
             # get model list
-            models: List[Model] = []
+            models: list[Model] = []
             for model_data in payload['data']:
 
                 # check if model inputs are compatible with slicer extension
@@ -1859,7 +1861,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
         # -- 3 ----------- RETURN MODELS
         return models
 
-    def getDockerExecutable(self, refresh: bool = False) -> Optional[str]:
+    def getDockerExecutable(self, refresh: bool = False) -> str | None:
         import platform
         import subprocess
 
@@ -1895,7 +1897,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
         # deliver
         return docker_executable
 
-    def getUDockerExecutable(self, refresh: bool = False) -> Optional[str]:
+    def getUDockerExecutable(self, refresh: bool = False) -> str | None:
         # TODO: return optional and display installation instructions under backend tab
 
         # TODO: figure out installation path.
@@ -2012,7 +2014,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
         else:
             slicer.util.pip_uninstall('udocker')
 
-    def getGPUInformation(self) -> List[str]:
+    def getGPUInformation(self) -> list[str]:
         import subprocess
 
         # try to get gpus from nvidia-smi
@@ -2027,7 +2029,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
         # return
         return gpus
 
-    def getLocalImages(self, backend: str, cached: bool = True) -> List[str]:
+    def getLocalImages(self, backend: str, cached: bool = True) -> list[str]:
 
         # get images
         import subprocess
@@ -2066,7 +2068,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
         # return
         return images
 
-    def get_node_paths(self, node) -> List[str]:
+    def get_node_paths(self, node) -> list[str]:
         storageNode=node.GetStorageNode()
         if storageNode is not None:
             return [storageNode.GetFullNameFromFileName()]
@@ -2189,7 +2191,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
             # let slicer breathe :D
             slicer.app.processEvents()
 
-    def _run_mhub_docker(self, model: 'Model', gpus: Optional[List[int]], input_dir: str, output_dir: str, onProgress: Callable[[float, str], None], onStop: Callable[[int, str, bool, bool], None], timeout: int = 600):
+    def _run_mhub_docker(self, model: 'Model', gpus: list[int] | None, input_dir: str, output_dir: str, onProgress: Callable[[float, str], None], onStop: Callable[[int, str, bool, bool], None], timeout: int = 600):
 
         # gpus command
         if gpus is None:
@@ -2293,11 +2295,11 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
     def run_mhub(self,
                  model: 'Model',
                  backend: Literal["docker", "udocker"],
-                 gpus: Optional[List[int]],
+                 gpus: list[int] | None,
                  input_dir: str,
                  output_dir: str,
-                 onProgress: Optional[Callable[[float, str], None]] = None,
-                 onStop: Optional[Callable[[int, str, bool, bool], None]] = None,
+                 onProgress: Callable[[float, str], None] | None = None,
+                 onStop: Callable[[int, str, bool, bool], None] | None = None,
                  timeout: int = 1200):
 
         # define callbacks
@@ -2320,7 +2322,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
             self._run_mhub_udocker(model, gpus is not None, input_dir, output_dir, _on_progress, _on_stop, timeout)
 
 
-    def remove_image(self, image_name, on_stop: Optional[Callable[[int, str, bool, bool], None]] = None, timeout: int = 0):
+    def remove_image(self, image_name, on_stop: Callable[[int, str, bool, bool], None] | None = None, timeout: int = 0):
 
         # get docker executable
         docker_exec = self.getDockerExecutable()
@@ -2332,7 +2334,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
         po = ProgressObserver(cmd, frequency=2, timeout=timeout, data={"image_name": image_name, "operation": "remove"})
         if on_stop: po.onStop(on_stop)
 
-    def update_image(self, image_name, on_stop: Optional[Callable[[int, str, bool, bool], None]] = None, timeout: int = 0):
+    def update_image(self, image_name, on_stop: Callable[[int, str, bool, bool], None] | None = None, timeout: int = 0):
 
         # get docker executable
         docker_exec = self.getDockerExecutable()
@@ -2353,7 +2355,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
         po.onProgress(onProgress)
 
 
-    def scanDirectoryForFilesWithExtension(self, local_dir: str, extension: Union[str, list[str]] = ".seg.dcm") -> List[str]:
+    def scanDirectoryForFilesWithExtension(self, local_dir: str, extension: str | list[str] = ".seg.dcm") -> list[str]:
         """
         Find all files with the specified extension in the specified directory and its subdirectories.
         """
@@ -2365,7 +2367,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
                     seg_files.append(os.path.join(root, file))
         return seg_files
 
-    def addFilesToDatabase(self, files: List[str], operation: Literal["reference", "copy", "move"]) -> None:
+    def addFilesToDatabase(self, files: list[str], operation: Literal["reference", "copy", "move"]) -> None:
         # DICOM indexer uses the current DICOM database folder as the basis for relative paths,
         # therefore we must convert the folder path to absolute to ensure this code works
         # even when a relative path is used as self.extractedFilesDirectory.
@@ -2389,7 +2391,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
             for file in files:
                 os.remove(file)
 
-    def importSegmentations(self, files: List[str]):
+    def importSegmentations(self, files: list[str]):
         import DICOMSegmentationPlugin
 
         # create importer
