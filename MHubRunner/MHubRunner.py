@@ -1872,7 +1872,7 @@ class MHubRunnerLogic(ScriptedLoadableModuleLogic):
         # find docker executable (windows, any linux, mac)
         docker_executable = None
         if ops == "Windows":
-            docker_executable = "C:\Program Files\Docker\Docker"
+            docker_executable = r"C:\Program Files\Docker\Docker"
         elif ops == "Darwin":
             docker_executable = "/usr/local/bin/docker"
         elif ops == "Linux":
